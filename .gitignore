@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+prisma/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Database / SQL scripts
+SQL/
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db
