@@ -17,6 +17,7 @@ from routes.projects import router as projects_router
 from routes.users import router as users_router
 from routes.setores import router as setores_router
 from routes.materiais import router as materiais_router
+from routes.unidades_medida import router as unidades_medida_router
 
 
 
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(setores_router)
     app.include_router(materiais_router)
+    app.include_router(unidades_medida_router)
 
 
     @app.get("/")
