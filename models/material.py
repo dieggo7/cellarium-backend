@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -15,15 +14,15 @@ class Material(Base):
     descricao: Mapped[str] = mapped_column(String(255), nullable=False)
     categoria_id: Mapped[int] = mapped_column(ForeignKey("categorias.id"), nullable=False)
     unidade_medida_id: Mapped[int] = mapped_column(ForeignKey("unidades_medida.id"), nullable=False)
-    especificacao: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    qr_code: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    especificacao: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    qr_code: Mapped[str | None] = mapped_column(String(36), unique=True, nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),
         nullable=False,
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime,
         server_default=func.now(),
         onupdate=func.now(),

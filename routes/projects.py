@@ -1,7 +1,12 @@
+# ruff: noqa: B008
+
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+
+from core.security import exigir_perfil, get_current_user
+from models.usuario import PerfilEnum, Usuario
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -33,6 +38,7 @@ def list_projects(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=10, ge=1, le=100),
     status: str | None = None,
+    usuario_atual: Usuario = Depends(get_current_user),
 ):
     items = PROJECTS_DB
     if status:
@@ -41,7 +47,7 @@ def list_projects(
 
 
 @router.get("/{project_id}", response_model=ProjectItem)
-def get_project(project_id: int):
+def get_project(project_id: int, usuario_atual: Usuario = Depends(get_current_user)):
     for project in PROJECTS_DB:
         if project.id == project_id:
             return project
@@ -49,7 +55,10 @@ def get_project(project_id: int):
 
 
 @router.post("", response_model=ProjectItem, status_code=201)
-def create_project(payload: ProjectCreateRequest):
+def create_project(
+    payload: ProjectCreateRequest,
+    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+):
     new_project = ProjectItem(
         id=max((project.id for project in PROJECTS_DB), default=0) + 1,
         name=payload.name,
@@ -62,7 +71,11 @@ def create_project(payload: ProjectCreateRequest):
 
 
 @router.put("/{project_id}", response_model=ProjectItem)
-def update_project(project_id: int, payload: ProjectCreateRequest):
+def update_project(
+    project_id: int,
+    payload: ProjectCreateRequest,
+    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+):
     for index, project in enumerate(PROJECTS_DB):
         if project.id == project_id:
             updated_project = ProjectItem(
@@ -78,7 +91,10 @@ def update_project(project_id: int, payload: ProjectCreateRequest):
 
 
 @router.delete("/{project_id}")
-def delete_project(project_id: int):
+def delete_project(
+    project_id: int,
+    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin)),
+):
     for index, project in enumerate(PROJECTS_DB):
         if project.id == project_id:
             del PROJECTS_DB[index]

@@ -1,10 +1,8 @@
+
 from fastapi import FastAPI, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-import time
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-
-
 
 
 class ExceptionMiddleware(BaseHTTPMiddleware):
@@ -13,13 +11,10 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         except HTTPException:
             raise
-        except Exception as exc:  # pragma: no cover - defensivo para erros inesperados
+        except Exception:  # noqa: BLE001  # pragma: no cover - defensivo para erros inesperados
             return JSONResponse(
                 status_code=500,
-                content={
-                    "detail": "Internal server error",
-                    "error": str(exc),
-                },
+                content={"detail": "Erro interno do servidor"},
             )
 
 

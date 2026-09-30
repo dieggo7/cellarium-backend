@@ -31,6 +31,7 @@ class MovimentacaoEstoque(Base):
     material_id: Mapped[int] = mapped_column(ForeignKey("materiais.id"), nullable=False)
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"), nullable=False)
     requisicao_id: Mapped[int | None] = mapped_column(ForeignKey("requisicoes.id"), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     tipo: Mapped[TipoMovimentacaoEnum] = mapped_column(
         Enum(TipoMovimentacaoEnum, values_callable=lambda e: [x.value for x in e]),
         nullable=False,

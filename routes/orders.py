@@ -1,7 +1,12 @@
+# ruff: noqa: B008
+
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+
+from core.security import exigir_perfil, get_current_user
+from models.usuario import PerfilEnum, Usuario
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -33,6 +38,7 @@ def list_orders(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=10, ge=1, le=100),
     status: str | None = None,
+    usuario_atual: Usuario = Depends(get_current_user),
 ):
     items = ORDERS_DB
     if status:
@@ -41,7 +47,7 @@ def list_orders(
 
 
 @router.get("/{order_id}", response_model=OrderItem)
-def get_order(order_id: int):
+def get_order(order_id: int, usuario_atual: Usuario = Depends(get_current_user)):
     for order in ORDERS_DB:
         if order.id == order_id:
             return order
@@ -49,7 +55,10 @@ def get_order(order_id: int):
 
 
 @router.post("", response_model=OrderItem, status_code=201)
-def create_order(payload: OrderCreateRequest):
+def create_order(
+    payload: OrderCreateRequest,
+    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+):
     new_order = OrderItem(
         id=max((order.id for order in ORDERS_DB), default=0) + 1,
         code=payload.code,

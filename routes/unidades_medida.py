@@ -1,7 +1,8 @@
-from typing import Optional
+# ruff: noqa: B008
+
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -19,19 +20,37 @@ class UnidadeMedidaItem(BaseModel):
 
     id: int
     nome: str
-    sigla: Optional[str]
+    sigla: str | None
     ativo: bool
 
 
 class UnidadeMedidaCreateRequest(BaseModel):
     nome: str = Field(min_length=1, max_length=50)
-    sigla: Optional[str] = Field(default=None, max_length=10)
+    sigla: str | None = Field(default=None, max_length=10)
+
+    @field_validator("nome")
+    @classmethod
+    def validar_nome(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("nome é obrigatório")
+        return value
 
 
 class UnidadeMedidaUpdateRequest(BaseModel):
-    nome: Optional[str] = Field(default=None, min_length=1, max_length=50)
-    sigla: Optional[str] = Field(default=None, max_length=10)
-    ativo: Optional[bool] = None
+    nome: str | None = Field(default=None, min_length=1, max_length=50)
+    sigla: str | None = Field(default=None, max_length=10)
+    ativo: bool | None = None
+
+    @field_validator("nome")
+    @classmethod
+    def validar_nome_opcional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("nome não pode ficar vazio")
+        return value
 
 
 def _commit_or_conflict(db: Session) -> None:

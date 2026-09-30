@@ -5,7 +5,6 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
-
 import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -15,11 +14,9 @@ from pwdlib import PasswordHash
 from pwdlib.exceptions import UnknownHashError
 from sqlalchemy.orm import Session
 
-
 from config.settings import settings
 from database.session import get_db
 from models.usuario import PerfilEnum, Usuario
-
 
 password_hash = PasswordHash.recommended()  # Argon2id for new passwords.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")

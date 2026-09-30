@@ -1,7 +1,6 @@
 import enum
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -30,7 +29,7 @@ class RequisicaoItem(Base):
         default=StatusRequisicaoItemEnum.pendente,
         nullable=False,
     )
-    observacao: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    observacao: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False

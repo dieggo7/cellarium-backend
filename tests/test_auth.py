@@ -3,14 +3,12 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-
 import bcrypt
 import jwt
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-
 
 from app.main import app
 from config.settings import Settings, settings
@@ -23,7 +21,7 @@ from core.security import (
 )
 from models.usuario import PerfilEnum
 from routes.auth import autenticar_usuario
-from routes.users import (
+from routes.usuarios import (
     UsuarioCreateRequest,
     UsuarioUpdateRequest,
     create_usuario,

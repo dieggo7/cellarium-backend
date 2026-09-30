@@ -1,5 +1,3 @@
-DROP DATABASE IF EXISTS til_marcon_almoxarifado;
-
 CREATE DATABASE IF NOT EXISTS til_marcon_almoxarifado
     CHARACTER SET utf8mb4
     COLLATE utf8mb4_unicode_ci;
@@ -93,7 +91,7 @@ CREATE TABLE materiais (
     categoria_id        INT UNSIGNED NOT NULL,
     unidade_medida_id   INT UNSIGNED NOT NULL,
     especificacao       VARCHAR(255) NULL,
-    qr_code             CHAR(36)     NOT NULL COMMENT 'Identificador único (UUID) usado no QR Code, não depende da descrição.',
+    qr_code             CHAR(36)     NULL COMMENT 'Identificador legado opcional; não utilizado no fluxo.',
     ativo               TINYINT(1)   NOT NULL DEFAULT 1,
     created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -191,6 +189,7 @@ CREATE TABLE movimentacoes_estoque (
     material_id        INT UNSIGNED NOT NULL,
     usuario_id         INT UNSIGNED NOT NULL,
     requisicao_id      INT UNSIGNED NULL,
+    idempotency_key    VARCHAR(128) NULL,
     tipo               ENUM('ENTRADA','SAIDA','AJUSTE','DEVOLUCAO') NOT NULL,
     quantidade         DECIMAL(12,3) NOT NULL,
     estoque_anterior   DECIMAL(12,3) NOT NULL,
@@ -203,6 +202,7 @@ CREATE TABLE movimentacoes_estoque (
         ON UPDATE CASCADE ON DELETE RESTRICT,
     CONSTRAINT fk_mov_requisicao FOREIGN KEY (requisicao_id) REFERENCES requisicoes(id)
         ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT uq_mov_idempotency_key UNIQUE (idempotency_key),
     CONSTRAINT chk_mov_quantidade_positiva CHECK (quantidade > 0),
     CONSTRAINT chk_mov_anterior_nao_negativo  CHECK (estoque_anterior >= 0),
     CONSTRAINT chk_mov_posterior_nao_negativo CHECK (estoque_posterior >= 0)
@@ -232,7 +232,10 @@ CREATE TABLE atendimentos_almoxarifado (
 -- =====================================================================
 CREATE INDEX idx_requisicoes_status           ON requisicoes(status);
 CREATE INDEX idx_requisicoes_data_solicitacao ON requisicoes(data_solicitacao);
+CREATE INDEX idx_requisicoes_status_setor     ON requisicoes(status, setor_id);
 CREATE INDEX idx_mov_created_at               ON movimentacoes_estoque(created_at);
+CREATE INDEX idx_mov_material_created         ON movimentacoes_estoque(material_id, created_at);
+CREATE INDEX idx_requisicao_itens_requisicao  ON requisicao_itens(requisicao_id);
 
 -- =====================================================================
 -- 21. VIEWS
@@ -251,11 +254,23 @@ SELECT
         WHEN e.quantidade_atual <= 0 THEN 'SEM_ESTOQUE'
         WHEN e.quantidade_atual <= e.estoque_minimo THEN 'ESTOQUE_BAIXO'
         ELSE 'NORMAL'
-    END AS situacao
+    END AS situacao,
+    e.id AS estoque_id,
+    m.id AS material_id,
+    m.categoria_id,
+    e.estoque_maximo,
+    e.lote,
+    e.localizacao_id,
+    COALESCE(
+        NULLIF(l.descricao, ''),
+        NULLIF(CONCAT_WS(' - ', l.corredor, l.estante, l.prateleira, l.posicao), ''),
+        l.codigo
+    ) AS localizacao_descricao
 FROM materiais m
 JOIN categorias c       ON c.id = m.categoria_id
 JOIN unidades_medida um ON um.id = m.unidade_medida_id
 JOIN estoque e          ON e.material_id = m.id
+LEFT JOIN localizacoes l ON l.id = e.localizacao_id
 WHERE m.ativo = 1;
 
 -- Requisições ainda não concluídas
@@ -265,12 +280,19 @@ SELECT
     s.nome AS setor,
     r.data_solicitacao AS data,
     r.status,
-    COUNT(ri.id) AS quantidade_itens
+    COUNT(ri.id) AS quantidade_itens,
+    r.id AS requisicao_id,
+    r.setor_id,
+    r.usuario_solicitante_id,
+    r.usuario_separador_id,
+    r.data_inicio_separacao
 FROM requisicoes r
 JOIN setores s ON s.id = r.setor_id
 LEFT JOIN requisicao_itens ri ON ri.requisicao_id = r.id
 WHERE r.status IN ('PENDENTE','EM_SEPARACAO','SEPARADA')
-GROUP BY r.id, r.numero, s.nome, r.data_solicitacao, r.status;
+GROUP BY r.id, r.numero, s.nome, r.data_solicitacao, r.status,
+         r.setor_id, r.usuario_solicitante_id, r.usuario_separador_id,
+         r.data_inicio_separacao;
 
 -- Histórico completo de movimentações, com setor de origem quando houver requisição
 CREATE VIEW vw_historico_movimentacoes AS
@@ -282,123 +304,15 @@ SELECT
     me.tipo,
     me.quantidade,
     me.estoque_anterior,
-    me.estoque_posterior
+    me.estoque_posterior,
+    me.id,
+    me.material_id,
+    me.usuario_id,
+    me.requisicao_id,
+    r.setor_id
 FROM movimentacoes_estoque me
 JOIN usuarios u  ON u.id = me.usuario_id
 JOIN materiais m ON m.id = me.material_id
 LEFT JOIN requisicoes r ON r.id = me.requisicao_id
 LEFT JOIN setores s     ON s.id = r.setor_id;
 
--- =====================================================================
--- 22. PROCEDURE — sp_registrar_saida_estoque
--- Transação atômica para confirmação de separação/saída de material.
--- Usa SELECT ... FOR UPDATE para bloquear a linha de estoque e, se
--- vinculada a uma requisição, a linha do item correspondente,
--- evitando condição de corrida entre saídas concorrentes do mesmo
--- material.
--- =====================================================================
-DELIMITER $$
-
-CREATE PROCEDURE sp_registrar_saida_estoque (
-    IN p_material_id   INT UNSIGNED,
-    IN p_quantidade    DECIMAL(12,3),
-    IN p_usuario_id    INT UNSIGNED,
-    IN p_requisicao_id INT UNSIGNED,
-    IN p_observacao    VARCHAR(500)
-)
-BEGIN
-    DECLARE v_estoque_id     INT UNSIGNED;
-    DECLARE v_estoque_atual  DECIMAL(12,3);
-    DECLARE v_novo_estoque   DECIMAL(12,3);
-    DECLARE v_item_id        INT UNSIGNED;
-    DECLARE v_qtd_atendida   DECIMAL(12,3);
-    DECLARE v_itens_pendentes INT;
-
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        RESIGNAL;
-    END;
-
-    IF p_quantidade IS NULL OR p_quantidade <= 0 THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Quantidade deve ser maior que zero.';
-    END IF;
-    IF p_material_id IS NULL THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Material é obrigatório.';
-    END IF;
-    IF p_usuario_id IS NULL THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Usuário é obrigatório.';
-    END IF;
-
-    START TRANSACTION;
-
-    -- Bloqueia a linha de estoque do material até o fim da transação
-    SELECT id, quantidade_atual INTO v_estoque_id, v_estoque_atual
-    FROM estoque
-    WHERE material_id = p_material_id
-    FOR UPDATE;
-
-    IF v_estoque_id IS NULL THEN
-        ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Registro de estoque não encontrado para o material informado.';
-    END IF;
-
-    IF v_estoque_atual < p_quantidade THEN
-        ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Estoque insuficiente para realizar a saída.';
-    END IF;
-
-    SET v_novo_estoque = v_estoque_atual - p_quantidade;
-
-    INSERT INTO movimentacoes_estoque (
-        material_id, usuario_id, requisicao_id, tipo,
-        quantidade, estoque_anterior, estoque_posterior, observacao
-    ) VALUES (
-        p_material_id, p_usuario_id, p_requisicao_id, 'SAIDA',
-        p_quantidade, v_estoque_atual, v_novo_estoque, p_observacao
-    );
-
-    UPDATE estoque
-    SET quantidade_atual = v_novo_estoque,
-        data_ultima_movimentacao = NOW()
-    WHERE id = v_estoque_id;
-
-    IF p_requisicao_id IS NOT NULL THEN
-        -- Bloqueia a linha do item da requisição correspondente
-        SELECT id, quantidade_atendida INTO v_item_id, v_qtd_atendida
-        FROM requisicao_itens
-        WHERE requisicao_id = p_requisicao_id AND material_id = p_material_id
-        FOR UPDATE;
-
-        IF v_item_id IS NOT NULL THEN
-            UPDATE requisicao_itens
-            SET quantidade_separada = quantidade_separada + p_quantidade,
-                quantidade_atendida = quantidade_atendida + p_quantidade,
-                status = CASE
-                    WHEN (quantidade_atendida + p_quantidade) >= quantidade_solicitada THEN 'ATENDIDO'
-                    ELSE 'SEPARADO'
-                END
-            WHERE id = v_item_id;
-        END IF;
-
-        SELECT COUNT(*) INTO v_itens_pendentes
-        FROM requisicao_itens
-        WHERE requisicao_id = p_requisicao_id
-          AND status NOT IN ('ATENDIDO','CANCELADO');
-
-        IF v_itens_pendentes = 0 THEN
-            UPDATE requisicoes
-            SET status = 'ATENDIDA', data_conclusao = NOW()
-            WHERE id = p_requisicao_id;
-        ELSE
-            UPDATE requisicoes
-            SET status = 'EM_SEPARACAO',
-                data_inicio_separacao = COALESCE(data_inicio_separacao, NOW())
-            WHERE id = p_requisicao_id AND status = 'PENDENTE';
-        END IF;
-    END IF;
-
-    COMMIT;
-END$$
-
-DELIMITER ;

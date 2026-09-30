@@ -1,21 +1,33 @@
-"""Database package for the Cellarium backend.
+"""Database package with lazy exports to avoid model import cycles."""
 
-
-This package centralizes the SQLAlchemy base class, database engine creation,
-request-scoped sessions and startup initialization logic.
-"""
-
+from importlib import import_module
+from typing import Any
 
 from database.base import Base
-from database.init_db import ensure_database_ready, init_db
-from database.session import SessionLocal, engine, get_db
-
 
 __all__ = [
     "Base",
     "SessionLocal",
     "engine",
+    "ensure_database_ready",
     "get_db",
     "init_db",
-    "ensure_database_ready",
 ]
+
+_LAZY_EXPORTS = {
+    "SessionLocal": ("database.session", "SessionLocal"),
+    "engine": ("database.session", "engine"),
+    "get_db": ("database.session", "get_db"),
+    "init_db": ("database.init_db", "init_db"),
+    "ensure_database_ready": ("database.init_db", "ensure_database_ready"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    target = _LAZY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute_name = target
+    value = getattr(import_module(module_name), attribute_name)
+    globals()[name] = value
+    return value

@@ -1,13 +1,10 @@
 from collections.abc import Generator
 
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-
 from config.settings import settings
 from database.base import Base
-
 
 engine = create_engine(
     settings.database_url.get_secret_value(),

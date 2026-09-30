@@ -1,10 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-
 from config.settings import settings
-
-
 
 
 def build_allowed_origins() -> list[str]:
@@ -37,7 +34,7 @@ def add_cors_middleware(app: FastAPI) -> None:
         allow_origins=build_allowed_origins(),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+        allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "Idempotency-Key"],
         expose_headers=["Authorization"],
         max_age=600,
     )

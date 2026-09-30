@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,11 +11,11 @@ class Localizacao(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     codigo: Mapped[str] = mapped_column(String(20), unique=True, index=True, nullable=False)
-    descricao: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
-    corredor: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    estante: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    prateleira: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    posicao: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    descricao: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    corredor: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    estante: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    prateleira: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    posicao: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

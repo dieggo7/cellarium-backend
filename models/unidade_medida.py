@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,7 +18,7 @@ class UnidadeMedida(Base):
         server_default=func.now(),
         nullable=False,
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime,
         server_default=func.now(),
         onupdate=func.now(),

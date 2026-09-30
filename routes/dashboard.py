@@ -1,5 +1,10 @@
-from fastapi import APIRouter
+# ruff: noqa: B008
+
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from core.security import get_current_user
+from models.usuario import Usuario
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -19,7 +24,7 @@ class DashboardResponse(BaseModel):
 
 
 @router.get("", response_model=DashboardResponse)
-def get_dashboard():
+def get_dashboard(usuario_atual: Usuario = Depends(get_current_user)):
     return {
         "total_users": 128,
         "active_projects": 24,
