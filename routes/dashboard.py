@@ -1,5 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from core.security import exigir_perfil
+from models.usuario import PerfilEnum, Usuario
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -19,7 +22,11 @@ class DashboardResponse(BaseModel):
 
 
 @router.get("", response_model=DashboardResponse)
-def get_dashboard():
+def get_dashboard(
+    _usuario: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor, PerfilEnum.almoxarife)
+    ),
+):
     return {
         "total_users": 128,
         "active_projects": 24,

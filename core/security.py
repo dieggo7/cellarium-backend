@@ -1,10 +1,8 @@
 """Password hashing, JWT validation and authorization dependencies."""
 
-
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
-
 
 import bcrypt
 import jwt
@@ -15,11 +13,9 @@ from pwdlib import PasswordHash
 from pwdlib.exceptions import UnknownHashError
 from sqlalchemy.orm import Session
 
-
 from config.settings import settings
 from database.session import get_db
 from models.usuario import PerfilEnum, Usuario
-
 
 password_hash = PasswordHash.recommended()  # Argon2id for new passwords.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -29,20 +25,15 @@ _BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
 _USER_ID_PATTERN = re.compile(r"[1-9][0-9]{0,18}\Z")
 
 
-
-
 def get_password_hash(senha_plana: str) -> str:
     if not senha_plana or len(senha_plana.encode("utf-8")) > _MAX_PASSWORD_BYTES:
         raise ValueError("A senha deve conter entre 1 e 1024 bytes UTF-8")
     return password_hash.hash(senha_plana)
 
 
-
-
 def verify_password(senha_plana: str, senha_hash: str) -> bool:
     if not senha_plana or len(senha_plana.encode("utf-8")) > _MAX_PASSWORD_BYTES:
         return False
-
 
     try:
         if senha_hash.startswith("$argon2id$"):
@@ -59,12 +50,8 @@ def verify_password(senha_plana: str, senha_hash: str) -> bool:
     return False
 
 
-
-
 def needs_password_rehash(senha_hash: str) -> bool:
     return senha_hash.startswith(_BCRYPT_PREFIXES)
-
-
 
 
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
@@ -75,14 +62,11 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
     if expires_delta <= timedelta(0):
         raise ValueError("O tempo de vida do token deve ser positivo")
 
-
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {"sub": subject, "iat": now, "exp": now + expires_delta}
     return jwt.encode(
         payload, settings.secret_key.get_secret_value(), algorithm=settings.jwt_algorithm
     )
-
-
 
 
 def decode_access_token(token: str) -> dict[str, Any] | None:
@@ -99,8 +83,6 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
         return None
 
 
-
-
 def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
@@ -114,7 +96,6 @@ def get_current_user(
     if payload is None:
         raise credenciais_invalidas
 
-
     usuario_id = payload.get("sub")
     if (
         not isinstance(usuario_id, str)
@@ -123,15 +104,11 @@ def get_current_user(
     ):
         raise credenciais_invalidas
 
-
     usuario = db.get(Usuario, int(usuario_id))
     if usuario is None or not usuario.ativo:
         raise credenciais_invalidas
 
-
     return usuario
-
-
 
 
 def exigir_perfil(*perfis_permitidos: PerfilEnum):
@@ -144,4 +121,5 @@ def exigir_perfil(*perfis_permitidos: PerfilEnum):
                 detail="Você não tem permissão para executar esta ação",
             )
         return usuario_atual
+
     return verificador

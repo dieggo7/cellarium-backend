@@ -1,7 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,11 +22,18 @@ class UsuarioItem(BaseModel):
 
 
 class UsuarioCreateRequest(BaseModel):
-    nome: str
-    login: str
-    senha: str
+    nome: str = Field(..., min_length=1, max_length=150)
+    login: str = Field(..., min_length=1, max_length=50)
+    senha: str = Field(..., min_length=1, max_length=512)
     perfil: PerfilEnum = PerfilEnum.solicitante
     setor_id: Optional[int] = None
+
+    @field_validator("senha")
+    @classmethod
+    def validar_senha(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 512:
+            raise ValueError("A senha deve ter no máximo 512 bytes UTF-8")
+        return value
 
 
 class UsuarioUpdateRequest(BaseModel):
@@ -82,6 +89,11 @@ def create_usuario(
     db: Session = Depends(get_db),
     usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
 ):
+    if usuario_atual.perfil == PerfilEnum.gestor and payload.perfil == PerfilEnum.admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Gestor não pode criar usuários administradores",
+        )
     if db.scalar(select(Usuario).where(Usuario.login == payload.login)):
         raise HTTPException(status_code=400, detail="Login já cadastrado")
 
@@ -112,6 +124,14 @@ def update_usuario(
     usuario = db.get(Usuario, usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    if usuario_atual.perfil == PerfilEnum.gestor and (
+        usuario.perfil == PerfilEnum.admin or payload.perfil == PerfilEnum.admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Gestor não pode alterar usuários administrativos",
+        )
 
     if payload.nome is not None:
         usuario.nome = payload.nome

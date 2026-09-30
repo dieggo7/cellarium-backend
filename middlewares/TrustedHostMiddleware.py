@@ -1,11 +1,7 @@
 from fastapi import FastAPI
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-import time
-
 
 from config.settings import settings
-
-
 
 
 def add_trusted_host_middleware(app: FastAPI) -> None:

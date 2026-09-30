@@ -1,24 +1,21 @@
 from fastapi import FastAPI
 
-
-import app
 from config.settings import settings
 from database.init_db import init_db
+from middlewares.cors import add_cors_middleware
 from middlewares.ExceptionMiddleware import add_exception_middleware
 from middlewares.HTTPSRedirectMiddleware import add_https_redirect_middleware
+from middlewares.security_headers import add_security_headers_middleware
 from middlewares.ServerErrorMiddleware import add_server_error_middleware
 from middlewares.TrustedHostMiddleware import add_trusted_host_middleware
-from middlewares.cors import add_cors_middleware
 from routes.auth import router as auth_router
 from routes.dashboard import router as dashboard_router
 from routes.health import router as health_router
+from routes.materiais import router as materiais_router
 from routes.orders import router as orders_router
 from routes.projects import router as projects_router
-from routes.users import router as users_router
 from routes.setores import router as setores_router
-from routes.materiais import router as materiais_router
-
-
+from routes.usuarios import router as usuarios_router
 
 
 def create_app() -> FastAPI:
@@ -28,26 +25,24 @@ def create_app() -> FastAPI:
         debug=settings.debug,
     )
 
-
     @app.on_event("startup")
     def startup_event() -> None:
         init_db()
-
 
     add_exception_middleware(app)
     add_server_error_middleware(app)
     add_https_redirect_middleware(app)
     add_trusted_host_middleware(app)
     add_cors_middleware(app)
+    add_security_headers_middleware(app)
     app.include_router(health_router)
     app.include_router(auth_router)
-    app.include_router(users_router)
+    app.include_router(usuarios_router)
     app.include_router(projects_router)
     app.include_router(orders_router)
     app.include_router(dashboard_router)
     app.include_router(setores_router)
     app.include_router(materiais_router)
-
 
     @app.get("/")
     def root():
@@ -66,10 +61,7 @@ def create_app() -> FastAPI:
             ],
         }
 
-
     return app
-
-
 
 
 app = create_app()

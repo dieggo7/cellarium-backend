@@ -1,10 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-import time
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-
-
 
 
 class ExceptionMiddleware(BaseHTTPMiddleware):
@@ -21,8 +18,6 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
                     "error": str(exc),
                 },
             )
-
-
 
 
 def add_exception_middleware(app: FastAPI) -> None:

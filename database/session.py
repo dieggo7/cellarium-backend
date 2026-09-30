@@ -1,13 +1,10 @@
 from collections.abc import Generator
 
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-
 from config.settings import settings
 from database.base import Base
-
 
 engine = create_engine(
     settings.database_url.get_secret_value(),
@@ -26,9 +23,7 @@ SessionLocal = sessionmaker(
 )
 
 
-
-
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session]:
     """Yield a SQLAlchemy session for FastAPI dependencies.
 
 
@@ -40,8 +35,6 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
-
-
 
 
 __all__ = ["Base", "SessionLocal", "engine", "get_db"]

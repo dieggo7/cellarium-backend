@@ -1,8 +1,7 @@
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
-
 
 import bcrypt
 import jwt
@@ -10,7 +9,6 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-
 
 from app.main import app
 from config.settings import Settings, settings
@@ -86,7 +84,7 @@ def test_create_access_token_contains_subject():
 
 def test_decode_rejects_expired_missing_claims_and_wrong_algorithm():
     key = settings.secret_key.get_secret_value()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired = jwt.encode(
         {"sub": "1", "iat": now - timedelta(hours=2), "exp": now - timedelta(hours=1)},
         key,
@@ -139,9 +137,7 @@ def test_user_creation_rejects_oversized_password():
 def test_manager_cannot_assign_admin_role():
     db = Mock()
     manager = SimpleNamespace(perfil=PerfilEnum.gestor)
-    payload = UsuarioCreateRequest(
-        nome="X", login="x", senha="secret", perfil=PerfilEnum.admin
-    )
+    payload = UsuarioCreateRequest(nome="X", login="x", senha="secret", perfil=PerfilEnum.admin)
 
     with pytest.raises(HTTPException) as error:
         create_usuario(payload, db, manager)
@@ -167,9 +163,7 @@ def test_placeholder_signing_key_is_rejected():
 
 def test_database_credentials_are_masked_in_settings():
     credential = secrets.token_hex(16)
-    configured = Settings(
-        database_url=f"mysql+pymysql://user:{credential}@localhost/database"
-    )
+    configured = Settings(database_url=f"mysql+pymysql://user:{credential}@localhost/database")
     assert credential not in repr(configured)
     with pytest.raises(ValidationError):
         Settings(database_url="")

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from database.base import Base
 
 
-class PerfilEnum(str, enum.Enum):
+class PerfilEnum(enum.StrEnum):
     admin = "ADMIN"
     gestor = "GESTOR"
     almoxarife = "ALMOXARIFE"
