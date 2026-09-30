@@ -1,27 +1,31 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import bcrypt
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from config.settings import settings
 from database.session import get_db
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def get_password_hash(senha_plana: str) -> str:
     senha_bytes = senha_plana.encode("utf-8")[:72]
-    return pwd_context.hash(senha_bytes)
+    return bcrypt.hashpw(senha_bytes, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(senha_plana: str, senha_hash: str) -> bool:
-    return pwd_context.verify(senha_plana.encode("utf-8")[:72], senha_hash)
+    try:
+        return bcrypt.checkpw(
+            senha_plana.encode("utf-8")[:72],
+            senha_hash.encode("utf-8"),
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
@@ -38,7 +42,7 @@ def decode_access_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
         return payload
-    except JWTError:
+    except jwt.InvalidTokenError:
         return None
 
 

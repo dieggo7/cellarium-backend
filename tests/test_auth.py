@@ -10,6 +10,10 @@ def test_password_hash_and_verify():
     assert verify_password("wrong-password", hashed) is False
 
 
+def test_invalid_password_hash_is_rejected():
+    assert verify_password("secret123", "senha-sem-formato-bcrypt") is False
+
+
 def test_create_access_token_contains_subject():
     token = create_access_token("user-123")
 
