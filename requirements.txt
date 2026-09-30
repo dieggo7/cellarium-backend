@@ -8,6 +8,7 @@ alembic==1.20.0
 python-dotenv==1.2.3
 bcrypt==5.0.0
 PyJWT==2.15.0
+pwdlib[argon2]==0.3.1
 pytest==9.1.1
 pytest-asyncio==1.4.0
 httpx==0.28.1

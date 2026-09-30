@@ -42,12 +42,12 @@ Logout é stateless: não existe blacklist nem refresh token persistido. Refresh
 |---|---|---|---|
 | GET `/materiais` | Autenticado | `page`, `limit`, `busca` (código/descrição), `categoria_id`, `ativo` | 200 lista; 400, 401 |
 | GET `/materiais/{material_id}` | Autenticado | — | 200 material; 400, 401, 404 |
-| POST `/materiais` | ADMIN, GESTOR | `codigo`, `descricao`, `categoria_id`, `unidade_medida_id`, `especificacao?`, `qr_code?` legado | 201; 400, 401, 403, 409 duplicado |
-| PUT `/materiais/{material_id}` | ADMIN, GESTOR | Campos de POST opcionais, `ativo?`; `qr_code: null` limpa o valor legado | 200; 400, 401, 403, 404, 409 duplicado |
+| POST `/materiais` | ADMIN, GESTOR | `codigo`, `descricao`, `categoria_id`, `unidade_medida_id`, `especificacao?`, `qr_code?`, `peso_unitario_g?` | 201; 400, 401, 403, 409 duplicado |
+| PUT `/materiais/{material_id}` | ADMIN, GESTOR | Campos de POST opcionais, `ativo?`; `qr_code: null` e `peso_unitario_g: null` limpam os campos | 200; 400, 401, 403, 404, 409 duplicado |
 | DELETE `/materiais/{material_id}` | ADMIN, GESTOR | — | 200 desativação lógica; 401, 403, 404 |
 | GET `/materiais/{material_id}/movimentacoes` | ADMIN, GESTOR, ALMOXARIFE | `page`, `limit`, `usuario_id`, `setor_id`, `requisicao_id`, `tipo`, `data_de`, `data_ate` | 200 envelope paginado da view; 400, 401, 403, 404 |
 
-Não há rota de QR Code. O campo nullable `qr_code` permanece apenas por compatibilidade do schema legado e não participa do fluxo.
+`qr_code` identifica o material escaneado na devolução. `peso_unitario_g` é o peso de uma unidade em gramas; materiais sem peso cadastrado não podem gerar devoluções.
 
 ## Categorias e unidades
 
@@ -130,9 +130,20 @@ A baixa bloqueia requisição, item e estoque com `FOR UPDATE`, escreve moviment
 |---|---|---|---|
 | GET `/movimentacoes` | ADMIN, GESTOR, ALMOXARIFE | `page`, `limit` (padrão 20, máximo 100), `material_id`, `usuario_id`, `setor_id`, `requisicao_id`, `tipo`, `data_de`, `data_ate` | 200 envelope paginado da view; 400, 401, 403 |
 | GET `/movimentacoes/{movimentacao_id}` | ADMIN, GESTOR, ALMOXARIFE | — | 200; 400, 401, 403, 404 |
-| POST `/movimentacoes` | ADMIN, ALMOXARIFE | `material_id`, `tipo`, `quantidade`, `observacao?`, `requisicao_id?` | 201; 400, 401, 403, 404, 409 estoque/conflito |
+| POST `/movimentacoes` | ADMIN, ALMOXARIFE | `material_id`, `tipo` (`ENTRADA` ou `AJUSTE`), `quantidade`, `observacao?` | 201; 400, 401, 403, 404, 409 estoque/conflito |
 
-`tipo` aceita `ENTRADA`, `AJUSTE` ou `DEVOLUCAO`; `SAIDA` é exclusiva da separação. Em `AJUSTE`, `quantidade` é o saldo absoluto e a movimentação grava a diferença absoluta. A data final `data_ate` é inclusiva.
+`SAIDA` é exclusiva da separação e `DEVOLUCAO` é exclusiva do fluxo de aceite abaixo. Em `AJUSTE`, `quantidade` é o saldo absoluto e a movimentação grava a diferença absoluta. A data final `data_ate` é inclusiva.
+
+## Devoluções
+
+| Método e caminho | Perfis | Body / filtros | Sucesso e erros principais |
+|---|---|---|---|
+| POST `/devolucoes` | SOLICITANTE dono, ADMIN | `requisicao_item_id`, `qr_code`, `peso_total_g`, `Idempotency-Key` | 201 pendente com quantidade calculada; 400 validação, 401, 403, 404 QR/item, 409 item não atendido, peso inválido ou saldo já reservado |
+| GET `/devolucoes/pendentes` | ALMOXARIFE, ADMIN | `page`, `limit` | 200 fila paginada; 401, 403 |
+| PATCH `/devolucoes/{devolucao_id}/aceitar` | ALMOXARIFE, ADMIN | — | 200 crédito em estoque e movimento `DEVOLUCAO`; 401, 403, 404, 409 já analisada/conflito |
+| PATCH `/devolucoes/{devolucao_id}/rejeitar` | ALMOXARIFE, ADMIN | `motivo` obrigatório | 200 rejeitada sem crédito; 400, 401, 403, 404, 409 já analisada |
+
+A quantidade é calculada por `peso_total_g / peso_unitario_g`, arredondada a três casas. Devoluções pendentes reservam parte da quantidade atendida para impedir devolução excedente; apenas o aceite, em transação idempotente, credita o estoque.
 
 ## Rotas auxiliares existentes
 

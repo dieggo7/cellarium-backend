@@ -129,6 +129,8 @@ def criar_movimentacao(
     usuario_id = usuario_atual.id
     if payload.tipo == TipoMovimentacaoEnum.saida:
         raise HTTPException(status_code=400, detail="SAIDA deve ser registrada pela separação da requisição")
+    if payload.tipo == TipoMovimentacaoEnum.devolucao:
+        raise HTTPException(status_code=400, detail="DEVOLUCAO deve ser registrada pelo fluxo de aceite")
     if payload.tipo == TipoMovimentacaoEnum.ajuste and not (payload.observacao and payload.observacao.strip()):
         raise HTTPException(status_code=400, detail="observacao é obrigatória para AJUSTE")
     if payload.tipo != TipoMovimentacaoEnum.ajuste and payload.quantidade <= 0:

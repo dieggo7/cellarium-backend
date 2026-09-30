@@ -111,9 +111,11 @@ def seed_inventory(factory, estoque_atual: Decimal = Decimal(10)):
         )
         db.add_all([usuario_almox, solicitante, admin])
         db.flush()
+        qr_code = str(uuid4())
         material = Material(
             codigo="FX-001", descricao="Parafuso", categoria_id=categoria.id,
-            unidade_medida_id=unidade.id, qr_code=str(uuid4()), ativo=True,
+            unidade_medida_id=unidade.id, qr_code=qr_code,
+            peso_unitario_g=Decimal(10), ativo=True,
         )
         db.add(material)
         db.flush()
@@ -145,10 +147,21 @@ def seed_inventory(factory, estoque_atual: Decimal = Decimal(10)):
             "admin_id": admin.id,
             "setor_id": setor.id,
             "material_id": material.id,
+            "qr_code": qr_code,
             "estoque_id": estoque.id,
             "requisicao_id": requisicao.id,
             "item_id": item.id,
         }
+
+
+def preparar_requisicao_atendida(factory, ids):
+    with factory.begin() as db:
+        requisicao = db.get(Requisicao, ids["requisicao_id"])
+        requisicao.status = StatusRequisicaoEnum.atendida
+        item = db.get(RequisicaoItem, ids["item_id"])
+        item.status = StatusRequisicaoItemEnum.atendido
+        item.quantidade_separada = Decimal(5)
+        item.quantidade_atendida = Decimal(5)
 
 
 def test_atendimento_nao_pode_ser_iniciado_duas_vezes(inventory_api):
@@ -233,6 +246,35 @@ def test_estoque_insuficiente_faz_rollback_completo(inventory_api):
         assert db.query(MovimentacaoEstoque).count() == 0
 
 
+def test_concluir_requisicao_parcial_preserva_divergencia(inventory_api):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    current_user["value"] = SimpleNamespace(id=ids["almoxarife_id"], perfil=PerfilEnum.almoxarife)
+    item_path = f"/requisicoes/{ids['requisicao_id']}/itens/{ids['item_id']}"
+
+    separated = client.patch(
+        f"{item_path}/separar",
+        json={"quantidade": "2"},
+        headers={"Idempotency-Key": "partial-conclude-test-1"},
+    )
+    concluded = client.patch(
+        f"/requisicoes/{ids['requisicao_id']}/concluir",
+        json={"permitir_parcial": True},
+    )
+
+    assert separated.status_code == 200, separated.text
+    assert separated.json()["item"]["quantidade_atendida"] == 0
+    assert concluded.status_code == 200, concluded.text
+    assert concluded.json()["status"] == "ATENDIDA"
+    item = concluded.json()["itens"][0]
+    assert item["quantidade_solicitada"] == 5
+    assert item["quantidade_separada"] == 2
+    assert item["quantidade_atendida"] == 2
+    assert item["status"] == "ATENDIDO"
+    with factory() as db:
+        assert db.get(Estoque, ids["estoque_id"]).quantidade_atual == Decimal("8.000")
+
+
 def test_ajuste_negativo_e_rejeitado_com_400(inventory_api):
     client, factory, current_user = inventory_api
     ids = seed_inventory(factory)
@@ -247,6 +289,116 @@ def test_ajuste_negativo_e_rejeitado_com_400(inventory_api):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Dados inválidos"
+
+
+def test_devolucao_nao_pode_creditar_pela_rota_generica(inventory_api):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    current_user["value"] = SimpleNamespace(id=ids["almoxarife_id"], perfil=PerfilEnum.almoxarife)
+
+    response = client.post("/movimentacoes", json={
+        "material_id": ids["material_id"],
+        "tipo": "DEVOLUCAO",
+        "quantidade": "1",
+        "requisicao_id": ids["requisicao_id"],
+    })
+
+    assert response.status_code == 400
+    with factory() as db:
+        assert db.get(Estoque, ids["estoque_id"]).quantidade_atual == Decimal("10.000")
+        assert db.query(MovimentacaoEstoque).count() == 0
+
+
+def test_devolucao_pendente_so_credida_apos_aceite_idempotente(inventory_api):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    preparar_requisicao_atendida(factory, ids)
+    current_user["value"] = SimpleNamespace(id=ids["solicitante_id"], perfil=PerfilEnum.solicitante)
+    payload = {
+        "requisicao_item_id": ids["item_id"],
+        "qr_code": ids["qr_code"],
+        "peso_total_g": "20",
+    }
+
+    created = client.post(
+        "/devolucoes",
+        json=payload,
+        headers={"Idempotency-Key": "return-accept-test-1"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["status"] == "PENDENTE"
+    assert Decimal(str(created.json()["quantidade_calculada"])) == Decimal(2)
+    with factory() as db:
+        assert db.get(Estoque, ids["estoque_id"]).quantidade_atual == Decimal("10.000")
+        assert db.query(MovimentacaoEstoque).count() == 0
+
+    current_user["value"] = SimpleNamespace(id=ids["almoxarife_id"], perfil=PerfilEnum.almoxarife)
+    pending = client.get("/devolucoes/pendentes")
+    accepted = client.patch(f"/devolucoes/{created.json()['id']}/aceitar")
+    repeated = client.patch(f"/devolucoes/{created.json()['id']}/aceitar")
+
+    assert pending.status_code == 200
+    assert pending.json()["total"] == 1
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["status"] == "ACEITA"
+    assert Decimal(str(accepted.json()["estoque_atual"])) == Decimal(12)
+    assert repeated.status_code == 409
+    with factory() as db:
+        assert db.get(Estoque, ids["estoque_id"]).quantidade_atual == Decimal("12.000")
+        assert db.query(MovimentacaoEstoque).count() == 1
+        assert db.query(MovimentacaoEstoque).one().idempotency_key == f"devolucao:{created.json()['id']}"
+
+
+def test_devolucao_rejeitada_nao_gera_credito(inventory_api):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    preparar_requisicao_atendida(factory, ids)
+    current_user["value"] = SimpleNamespace(id=ids["solicitante_id"], perfil=PerfilEnum.solicitante)
+    created = client.post(
+        "/devolucoes",
+        json={"requisicao_item_id": ids["item_id"], "qr_code": ids["qr_code"], "peso_total_g": "10"},
+        headers={"Idempotency-Key": "return-reject-test-1"},
+    )
+    current_user["value"] = SimpleNamespace(id=ids["almoxarife_id"], perfil=PerfilEnum.almoxarife)
+
+    rejected = client.patch(
+        f"/devolucoes/{created.json()['id']}/rejeitar",
+        json={"motivo": "Material danificado"},
+    )
+    accept_rejected = client.patch(f"/devolucoes/{created.json()['id']}/aceitar")
+
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "REJEITADA"
+    assert rejected.json()["observacao_analise"] == "Material danificado"
+    assert accept_rejected.status_code == 409
+    with factory() as db:
+        assert db.get(Estoque, ids["estoque_id"]).quantidade_atual == Decimal("10.000")
+        assert db.query(MovimentacaoEstoque).count() == 0
+
+
+def test_devolucao_pendente_reserva_quantidade_disponivel(inventory_api):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    preparar_requisicao_atendida(factory, ids)
+    current_user["value"] = SimpleNamespace(id=ids["solicitante_id"], perfil=PerfilEnum.solicitante)
+
+    first = client.post(
+        "/devolucoes",
+        json={"requisicao_item_id": ids["item_id"], "qr_code": ids["qr_code"], "peso_total_g": "40"},
+        headers={"Idempotency-Key": "return-reserve-test-1"},
+    )
+    over_return = client.post(
+        "/devolucoes",
+        json={"requisicao_item_id": ids["item_id"], "qr_code": ids["qr_code"], "peso_total_g": "20"},
+        headers={"Idempotency-Key": "return-reserve-test-2"},
+    )
+
+    assert first.status_code == 201, first.text
+    assert over_return.status_code == 409, over_return.text
+    assert Decimal(over_return.json()["detail"]["quantidade_disponivel"]) == Decimal(1)
+    with factory() as db:
+        assert db.get(Estoque, ids["estoque_id"]).quantidade_atual == Decimal("10.000")
+        assert db.query(MovimentacaoEstoque).count() == 0
 
 
 def test_entrada_e_ajuste_usam_saldo_decimal_absoluto(inventory_api):
@@ -437,9 +589,11 @@ def test_filtros_catalogo_e_soft_delete_com_vinculo(inventory_api):
         "codigo": "FE-001", "descricao": "Ferramenta teste",
         "categoria_id": created_category.json()["id"],
         "unidade_medida_id": 1,
+        "peso_unitario_g": "3.125",
     })
     assert material.status_code == 201, material.text
     assert material.json()["qr_code"] is None
+    assert Decimal(str(material.json()["peso_unitario_g"])) == Decimal("3.125")
     filtered = client.get("/materiais", params={
         "busca": "ferramenta", "categoria_id": created_category.json()["id"], "ativo": True,
     })

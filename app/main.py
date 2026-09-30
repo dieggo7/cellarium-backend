@@ -13,6 +13,7 @@ from routes.atendimentos import router as atendimentos_router
 from routes.auth import router as auth_router
 from routes.categorias import router as categorias_router
 from routes.dashboard import router as dashboard_router
+from routes.devolucoes import router as devolucoes_router
 from routes.estoque import router as estoque_router
 from routes.health import router as health_router
 from routes.localizacoes import router as localizacoes_router
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(atendimentos_router)
     app.include_router(requisicoes_router)
     app.include_router(requisicoes_itens_router)
+    app.include_router(devolucoes_router)
     app.include_router(movimentacoes_router)
     app.include_router(router_materiais_movimentacoes)
 
@@ -108,6 +110,7 @@ def create_app() -> FastAPI:
                 "/localizacoes",
                 "/estoque",
                 "/requisicoes",
+                "/devolucoes",
                 "/atendimentos",
                 "/movimentacoes",
                 "/dashboard",

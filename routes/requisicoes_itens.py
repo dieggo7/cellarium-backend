@@ -82,6 +82,7 @@ def obter_itens_requisicao(db: Session, requisicao_id: int) -> list[dict]:
             "unidade": {"nome": row[3], "sigla": row[4]},
             "quantidade_solicitada": row[0].quantidade_solicitada,
             "quantidade_separada": row[0].quantidade_separada,
+            "quantidade_atendida": row[0].quantidade_atendida,
             "quantidade_pendente": row[0].quantidade_solicitada - row[0].quantidade_separada,
             "status": row[0].status,
             "observacao": row[0].observacao,
@@ -295,7 +296,6 @@ def separar_item_requisicao(
                 )
                 .values(
                     quantidade_separada=quantidade_separada_nova,
-                    quantidade_atendida=quantidade_separada_nova,
                     status=status_item_novo,
                 )
                 .execution_options(synchronize_session=False)

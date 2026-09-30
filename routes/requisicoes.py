@@ -434,7 +434,11 @@ def concluir_requisicao(
             requisicao = db.scalar(select(Requisicao).where(Requisicao.id == requisicao_id).with_for_update())
             if requisicao is None:
                 raise HTTPException(status_code=404, detail="Requisição não encontrada")
-            if requisicao.status != StatusRequisicaoEnum.separada:
+            conclusao_parcial_em_andamento = (
+                requisicao.status == StatusRequisicaoEnum.em_separacao
+                and payload.permitir_parcial
+            )
+            if requisicao.status != StatusRequisicaoEnum.separada and not conclusao_parcial_em_andamento:
                 raise HTTPException(status_code=409, detail="A requisição precisa estar SEPARADA para ser concluída")
             itens = db.scalars(
                 select(RequisicaoItem).where(RequisicaoItem.requisicao_id == requisicao_id)
@@ -451,8 +455,20 @@ def concluir_requisicao(
                     ],
                 })
             for item in pendentes:
-                item.status = StatusRequisicaoItemEnum.cancelado
-                item.observacao = _anexar_observacao(item.observacao, "Não atendido por falta de saldo")
+                quantidade_nao_separada = item.quantidade_solicitada - item.quantidade_separada
+                if item.quantidade_separada > 0:
+                    item.status = StatusRequisicaoItemEnum.atendido
+                    item.quantidade_atendida = item.quantidade_separada
+                    item.observacao = _anexar_observacao(
+                        item.observacao,
+                        f"Atendido parcialmente; quantidade não separada: {quantidade_nao_separada}",
+                    )
+                else:
+                    item.status = StatusRequisicaoItemEnum.cancelado
+                    item.observacao = _anexar_observacao(
+                        item.observacao,
+                        "Não atendido na conclusão parcial da requisição",
+                    )
             for item in itens:
                 if item.status == StatusRequisicaoItemEnum.separado:
                     item.status = StatusRequisicaoItemEnum.atendido

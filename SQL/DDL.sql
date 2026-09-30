@@ -91,7 +91,8 @@ CREATE TABLE materiais (
     categoria_id        INT UNSIGNED NOT NULL,
     unidade_medida_id   INT UNSIGNED NOT NULL,
     especificacao       VARCHAR(255) NULL,
-    qr_code             CHAR(36)     NULL COMMENT 'Identificador legado opcional; não utilizado no fluxo.',
+    qr_code             CHAR(36)     NULL COMMENT 'Identificador opcional para leitura nas devoluções.',
+    peso_unitario_g     DECIMAL(12,6) NULL COMMENT 'Peso unitário em gramas para cálculo de devoluções.',
     ativo               TINYINT(1)   NOT NULL DEFAULT 1,
     created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -182,7 +183,36 @@ CREATE TABLE requisicao_itens (
 ) ENGINE=InnoDB;
 
 -- =====================================================================
--- 10. MOVIMENTAÇÕES DE ESTOQUE (log de auditoria — somente inserção)
+-- 10. DEVOLUÇÕES (crédito de estoque somente após aceite do almoxarife)
+-- =====================================================================
+CREATE TABLE devolucoes (
+    id                    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    requisicao_item_id    INT UNSIGNED NOT NULL,
+    usuario_operador_id   INT UNSIGNED NOT NULL,
+    usuario_analise_id    INT UNSIGNED NULL,
+    idempotency_key       VARCHAR(128) NOT NULL,
+    peso_total_g          DECIMAL(12,3) NOT NULL,
+    peso_unitario_g       DECIMAL(12,6) NOT NULL,
+    quantidade_calculada  DECIMAL(12,3) NOT NULL,
+    status                ENUM('PENDENTE','ACEITA','REJEITADA') NOT NULL DEFAULT 'PENDENTE',
+    observacao            VARCHAR(500) NULL,
+    observacao_analise    VARCHAR(500) NULL,
+    created_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    analisada_at          DATETIME NULL,
+    CONSTRAINT uq_devolucoes_idempotency_key UNIQUE (idempotency_key),
+    CONSTRAINT fk_devolucoes_item FOREIGN KEY (requisicao_item_id) REFERENCES requisicao_itens(id)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_devolucoes_operador FOREIGN KEY (usuario_operador_id) REFERENCES usuarios(id)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_devolucoes_analise FOREIGN KEY (usuario_analise_id) REFERENCES usuarios(id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT chk_devolucoes_peso_positivo CHECK (peso_total_g > 0),
+    CONSTRAINT chk_devolucoes_unidade_positiva CHECK (peso_unitario_g > 0),
+    CONSTRAINT chk_devolucoes_quantidade_positiva CHECK (quantidade_calculada > 0)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 11. MOVIMENTAÇÕES DE ESTOQUE (log de auditoria — somente inserção)
 -- =====================================================================
 CREATE TABLE movimentacoes_estoque (
     id                 BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -209,7 +239,7 @@ CREATE TABLE movimentacoes_estoque (
 ) ENGINE=InnoDB;
 
 -- =====================================================================
--- 11. ATENDIMENTOS DO ALMOXARIFE (sessão de turno/setor)
+-- 12. ATENDIMENTOS DO ALMOXARIFE (sessão de turno/setor)
 -- =====================================================================
 CREATE TABLE atendimentos_almoxarifado (
     id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -225,7 +255,7 @@ CREATE TABLE atendimentos_almoxarifado (
 ) ENGINE=InnoDB;
 
 -- =====================================================================
--- 12. ÍNDICES ADICIONAIS
+-- 13. ÍNDICES ADICIONAIS
 -- (codigo, qr_code, categoria_id, setor_id, requisicao_id, material_id
 --  já são indexados automaticamente pelas restrições UNIQUE/FOREIGN KEY
 --  do InnoDB — não recriados aqui para evitar índices redundantes)
@@ -233,6 +263,8 @@ CREATE TABLE atendimentos_almoxarifado (
 CREATE INDEX idx_requisicoes_status           ON requisicoes(status);
 CREATE INDEX idx_requisicoes_data_solicitacao ON requisicoes(data_solicitacao);
 CREATE INDEX idx_requisicoes_status_setor     ON requisicoes(status, setor_id);
+CREATE INDEX idx_devolucoes_status_created    ON devolucoes(status, created_at);
+CREATE INDEX idx_devolucoes_item              ON devolucoes(requisicao_item_id);
 CREATE INDEX idx_mov_created_at               ON movimentacoes_estoque(created_at);
 CREATE INDEX idx_mov_material_created         ON movimentacoes_estoque(material_id, created_at);
 CREATE INDEX idx_requisicao_itens_requisicao  ON requisicao_itens(requisicao_id);

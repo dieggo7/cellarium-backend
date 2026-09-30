@@ -1,6 +1,8 @@
 # ruff: noqa: B008
 
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_, select
@@ -25,6 +27,7 @@ class MaterialItem(BaseModel):
     unidade_medida_id: int
     especificacao: str | None = None
     qr_code: str | None = None
+    peso_unitario_g: Decimal | None = None
     ativo: bool
 
 
@@ -35,6 +38,7 @@ class MaterialCreateRequest(BaseModel):
     unidade_medida_id: int = Field(gt=0)
     especificacao: str | None = Field(default=None, max_length=255)
     qr_code: str | None = Field(default=None, max_length=36)
+    peso_unitario_g: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=6)
 
     @field_validator("codigo", "descricao")
     @classmethod
@@ -52,6 +56,7 @@ class MaterialUpdateRequest(BaseModel):
     unidade_medida_id: int | None = Field(default=None, gt=0)
     especificacao: str | None = Field(default=None, max_length=255)
     qr_code: str | None = Field(default=None, max_length=36)
+    peso_unitario_g: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=6)
     ativo: bool | None = None
 
     @field_validator("codigo", "descricao")
@@ -74,6 +79,7 @@ def _to_item(material: Material) -> MaterialItem:
         unidade_medida_id=material.unidade_medida_id,
         especificacao=material.especificacao,
         qr_code=material.qr_code,
+        peso_unitario_g=material.peso_unitario_g,
         ativo=material.ativo,
     )
 
@@ -138,6 +144,7 @@ def create_material(
         unidade_medida_id=payload.unidade_medida_id,
         especificacao=payload.especificacao,
         qr_code=payload.qr_code,
+        peso_unitario_g=payload.peso_unitario_g,
         ativo=True,
     )
     db.add(material)
@@ -176,6 +183,8 @@ def update_material(
         raise HTTPException(status_code=409, detail="Identificador legado já cadastrado")
     if "qr_code" in payload.model_fields_set:
         material.qr_code = payload.qr_code
+    if "peso_unitario_g" in payload.model_fields_set:
+        material.peso_unitario_g = payload.peso_unitario_g
 
     if payload.descricao is not None:
         material.descricao = payload.descricao
