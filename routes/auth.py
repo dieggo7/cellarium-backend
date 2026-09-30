@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from config.settings import settings
-from core.security import create_access_token, verify_password
+from core.security import create_access_token, get_current_user, verify_password
 from database.session import get_db
 from models.usuario import PerfilEnum, Usuario
 
@@ -78,16 +78,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UsuarioPayload)
 def me(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    from core.security import decode_access_token
-
-    payload = decode_access_token(token)
-    usuario = db.get(Usuario, int(payload.get("sub")))
-    if not usuario:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido ou expirado",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    usuario = get_current_user(token, db)
 
     return {
         "id": usuario.id,

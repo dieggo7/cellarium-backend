@@ -24,9 +24,6 @@ htmlcov/
 .env.*
 !.env.example
 
-# Database / SQL scripts
-SQL/
-
 # IDE / OS
 .vscode/
 .DS_Store

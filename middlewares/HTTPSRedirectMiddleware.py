@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
-import time
 
+from config.settings import settings
 
 
 
 def add_https_redirect_middleware(app: FastAPI) -> None:
-    app.add_middleware(HTTPSRedirectMiddleware)
+    if settings.force_https_redirect:
+        app.add_middleware(HTTPSRedirectMiddleware)
