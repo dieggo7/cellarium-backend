@@ -26,7 +26,7 @@ from models.usuario import PerfilEnum, Usuario
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login/form")
 
 
 class LoginRequest(BaseModel):

@@ -19,7 +19,7 @@ from database.session import get_db
 from models.usuario import PerfilEnum, Usuario
 
 password_hash = PasswordHash.recommended()  # Argon2id for new passwords.
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login/form")
 _MAX_PASSWORD_BYTES = 1024
 _MAX_TOKEN_CHARS = 4096
 _BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")

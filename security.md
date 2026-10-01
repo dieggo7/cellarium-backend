@@ -4,6 +4,9 @@ Defina DATABASE_URL e SECRET_KEY por variável de ambiente ou .env local. A apli
 Gere SECRET_KEY com python -c "import secrets; print(secrets.token_hex(32))". Guarde a chave em um gerenciador de segredos na implantação. A troca dessa chave invalida os JWTs existentes.
 Novas senhas usam Argon2id por pwdlib[argon2]. Hashes bcrypt antigos continuam verificáveis e são migrados para Argon2id no próximo login válido. Senhas antigas com mais de 72 bytes UTF-8 precisam de redefinição, pois o código anterior truncava o valor antes do hash.
 JWTs são assinados com HS256 e exigem sub, iat e exp. O token é uma assinatura, não uma forma de criptografar dados: não coloque segredos no payload.
+## Primeiro acesso local
+`SQL/DML.sql` contém hashes placeholder para os usuários de exemplo; eles não permitem login. A inicialização da API também não cria usuários padrão. Para preparar a primeira conta ADMIN, execute na raiz do projeto `\.venv\Scripts\python.exe .\bootstrap_admin.py` e informe o login e a senha no prompt (a senha não aparece na tela e é armazenada com Argon2id). Se o banco já contém o ADMIN placeholder `admin`, autorize a troca explicitamente com `\.venv\Scripts\python.exe .\bootstrap_admin.py --reset-existing`. Não use senha padrão em produção.
+Depois, envie `POST /auth/login` com JSON `{"login":"admin","senha":"<senha informada no bootstrap>"}`. Copie `access_token` da resposta para `Authorization: Bearer <access_token>` ou use o botão Authorize em `/docs`.
 ## Dependências e auditoria
 requirements.txt contém as dependências diretas. requirements.lock contém também as transitivas, com versões fixas e hashes SHA-256. Atualize a trava sempre que mudar requirements.txt:
 sh

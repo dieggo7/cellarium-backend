@@ -39,6 +39,14 @@ def test_password_hash_and_verify():
     assert verify_password("wrong-password", hashed) is False
 
 
+def test_openapi_authorize_uses_form_login_endpoint():
+    security_scheme = app.openapi()["components"]["securitySchemes"][
+        "OAuth2PasswordBearer"
+    ]
+
+    assert security_scheme["flows"]["password"]["tokenUrl"] == "/auth/login/form"
+
+
 def test_password_is_not_truncated_at_72_bytes():
     plain = "á" * 40
     hashed = get_password_hash(plain)
