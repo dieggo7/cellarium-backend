@@ -145,6 +145,31 @@ A baixa bloqueia requisição, item e estoque com `FOR UPDATE`, escreve moviment
 
 A quantidade é calculada por `peso_total_g / peso_unitario_g`, arredondada a três casas. Devoluções pendentes reservam parte da quantidade atendida para impedir devolução excedente; apenas o aceite, em transação idempotente, credita o estoque.
 
+## Auditoria CRUD das rotas
+
+Inventário conferido pelos decorators em `routes/*.py` e pelos routers registrados em `app/main.py`. `GET` indica leitura de coleção e/ou detalhe; `PATCH` aparece separado de `PUT`, pois representa ação parcial ou transição de estado e não foi contado como substituto de CRUD.
+
+| Grupo | CRUD implementado | Métodos/rotas ausentes | Observação |
+|---|---|---|---|
+| Auth | GET `/auth/me`; POST `/auth/login`, `/auth/login/form`, `/auth/logout`, `/auth/refresh` | PUT e DELETE não se aplicam | Autenticação e sessão, não cadastro CRUD. |
+| Usuários | GET coleção e detalhe; POST; PUT; DELETE | Nenhuma | CRUD completo; DELETE desativa logicamente. |
+| Setores | GET coleção e detalhe; POST; PUT; DELETE | Nenhuma | CRUD completo; DELETE desativa logicamente. |
+| Categorias | GET coleção e detalhe; POST; PUT; DELETE | Nenhuma | CRUD completo; DELETE desativa logicamente. |
+| Unidades de medida | GET coleção e detalhe; POST; PUT; DELETE | Nenhuma | CRUD completo; DELETE desativa logicamente (204). |
+| Materiais | GET coleção e detalhe; POST; PUT; DELETE | Nenhuma | CRUD completo; há também GET `/materiais/{material_id}/movimentacoes`. |
+| Localizações | GET coleção e detalhe; POST; PUT; DELETE | Nenhuma | CRUD completo; DELETE desativa logicamente. |
+| Estoque | GET coleção, detalhe e por material; POST; PUT; DELETE | Nenhuma | CRUD completo para o cadastro do saldo; quantidade atual só muda por movimentação. |
+| Requisições | GET coleção e detalhe; POST; PUT | DELETE `/requisicoes/{requisicao_id}` | Cancelamento existe via PATCH `/requisicoes/{requisicao_id}/cancelar`; não há exclusão da requisição. |
+| Itens de requisição | GET da coleção de itens; POST; PUT; DELETE | GET individual `/requisicoes/{requisicao_id}/itens/{item_id}` | O GET existente lista os itens do pedido; DELETE cancela logicamente o item e tem restrições de estado. |
+| Atendimentos | GET coleção, detalhe e ativo; POST `/atendimentos/iniciar` | PUT e DELETE não existem | Fluxo de turno; alteração de estado é PATCH `/atendimentos/{atendimento_id}/encerrar`. Não é um cadastro CRUD genérico. |
+| Devoluções | POST; GET apenas da fila pendente | GET `/devolucoes`; GET `/devolucoes/{devolucao_id}`; PUT e DELETE | Análise é feita por PATCH `/devolucoes/{devolucao_id}/aceitar` ou `/devolucoes/{devolucao_id}/rejeitar`; crédito exige aceite. Não há edição/exclusão após registro. |
+| Movimentações | GET coleção e detalhe; POST | PUT e DELETE | Não implementados intencionalmente: histórico de auditoria deve permanecer imutável. |
+| Dashboard e health | GET | POST, PUT e DELETE não se aplicam | Endpoints de consulta/saúde, não recursos CRUD. |
+| Projects (demo) | GET coleção e detalhe; POST; PUT; DELETE | Nenhuma | CRUD completo em memória; recurso demonstrativo. |
+| Orders (demo) | GET coleção e detalhe; POST | PUT `/orders/{order_id}` e DELETE `/orders/{order_id}` | CRUD incompleto; recurso demonstrativo mantido em memória. |
+
+**Lacunas funcionais identificadas:** adicionar GET de detalhe de item de requisição se o cliente precisar consultar um item isoladamente; adicionar GET geral/de detalhe para devoluções se for necessário consultar o histórico fora da fila pendente; completar PUT e DELETE de `orders` somente se esse recurso demonstrativo for mantido. A falta de PUT/DELETE em atendimentos e movimentações é coerente com seus fluxos e não foi classificada como falha de CRUD.
+
 ## Rotas auxiliares existentes
 
 | Método e caminho | Perfis | Body / filtros | Sucesso e erros principais |
