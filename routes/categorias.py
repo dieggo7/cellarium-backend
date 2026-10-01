@@ -63,7 +63,9 @@ def _salvar(db: Session) -> None:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Nome ou prefixo de categoria já cadastrado") from exc
+        raise HTTPException(
+            status_code=409, detail="Nome ou prefixo de categoria já cadastrado"
+        ) from exc
 
 
 @router.get("", response_model=list[CategoriaItem])
@@ -78,7 +80,9 @@ def listar_categorias(
     query = select(Categoria)
     if busca:
         termo = f"%{busca.strip()}%"
-        query = query.where(or_(Categoria.nome.ilike(termo), Categoria.codigo_prefixo.ilike(termo)))
+        query = query.where(
+            or_(Categoria.nome.ilike(termo), Categoria.codigo_prefixo.ilike(termo))
+        )
     if ativo is not None:
         query = query.where(Categoria.ativo.is_(ativo))
     query = query.order_by(Categoria.nome).offset((page - 1) * limit).limit(limit)
@@ -101,7 +105,9 @@ def obter_categoria(
 def criar_categoria(
     payload: CategoriaCreateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     categoria = Categoria(
         nome=payload.nome.strip(),
@@ -120,7 +126,9 @@ def atualizar_categoria(
     categoria_id: int,
     payload: CategoriaUpdateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     categoria = db.get(Categoria, categoria_id)
     if categoria is None:
@@ -138,7 +146,9 @@ def atualizar_categoria(
 def desativar_categoria(
     categoria_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     categoria = db.get(Categoria, categoria_id)
     if categoria is None:

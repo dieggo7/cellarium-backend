@@ -27,9 +27,15 @@ class OrderCreateRequest(BaseModel):
 
 
 ORDERS_DB = [
-    OrderItem(id=1, code="ORD-1001", customer="Maria Souza", total=320.0, status="paid"),
-    OrderItem(id=2, code="ORD-1002", customer="João Lima", total=580.5, status="pending"),
-    OrderItem(id=3, code="ORD-1003", customer="Empresa X", total=980.0, status="shipped"),
+    OrderItem(
+        id=1, code="ORD-1001", customer="Maria Souza", total=320.0, status="paid"
+    ),
+    OrderItem(
+        id=2, code="ORD-1002", customer="João Lima", total=580.5, status="pending"
+    ),
+    OrderItem(
+        id=3, code="ORD-1003", customer="Empresa X", total=980.0, status="shipped"
+    ),
 ]
 
 
@@ -57,7 +63,9 @@ def get_order(order_id: int, usuario_atual: Usuario = Depends(get_current_user))
 @router.post("", response_model=OrderItem, status_code=201)
 def create_order(
     payload: OrderCreateRequest,
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     new_order = OrderItem(
         id=max((order.id for order in ORDERS_DB), default=0) + 1,

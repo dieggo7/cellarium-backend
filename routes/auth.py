@@ -148,7 +148,9 @@ def refresh_token(usuario_atual: Usuario = Depends(get_current_user)):
 
 
 @router.post("/login/form")
-def login_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login_form(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+):
     usuario = autenticar_usuario(db, form_data.username, form_data.password)
     if not usuario:
         raise HTTPException(

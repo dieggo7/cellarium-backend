@@ -73,7 +73,9 @@ def _salvar(db: Session) -> None:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Código de localização já cadastrado") from exc
+        raise HTTPException(
+            status_code=409, detail="Código de localização já cadastrado"
+        ) from exc
 
 
 @router.get("")
@@ -89,22 +91,34 @@ def listar_localizacoes(
     conditions = []
     if busca:
         termo = f"%{busca.strip()}%"
-        conditions.append(or_(
-            Localizacao.codigo.ilike(termo),
-            Localizacao.descricao.ilike(termo),
-            Localizacao.corredor.ilike(termo),
-            Localizacao.estante.ilike(termo),
-        ))
+        conditions.append(
+            or_(
+                Localizacao.codigo.ilike(termo),
+                Localizacao.descricao.ilike(termo),
+                Localizacao.corredor.ilike(termo),
+                Localizacao.estante.ilike(termo),
+            )
+        )
     if ativo is not None:
         conditions.append(Localizacao.ativo.is_(ativo))
     if corredor:
         conditions.append(Localizacao.corredor == corredor)
-    total = db.scalar(select(func.count()).select_from(Localizacao).where(*conditions)) or 0
+    total = (
+        db.scalar(select(func.count()).select_from(Localizacao).where(*conditions)) or 0
+    )
     rows = db.scalars(
-        select(Localizacao).where(*conditions).order_by(Localizacao.codigo)
-        .offset((page - 1) * limit).limit(limit)
+        select(Localizacao)
+        .where(*conditions)
+        .order_by(Localizacao.codigo)
+        .offset((page - 1) * limit)
+        .limit(limit)
     ).all()
-    return {"dados": [_item(localizacao) for localizacao in rows], "total": total, "page": page, "limit": limit}
+    return {
+        "dados": [_item(localizacao) for localizacao in rows],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
 
 
 @router.get("/{localizacao_id}", response_model=LocalizacaoItem)
@@ -123,7 +137,9 @@ def obter_localizacao(
 def criar_localizacao(
     payload: LocalizacaoCreateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.almoxarife)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.almoxarife)
+    ),
 ):
     localizacao = Localizacao(**payload.model_dump())
     db.add(localizacao)
@@ -137,7 +153,9 @@ def atualizar_localizacao(
     localizacao_id: int,
     payload: LocalizacaoUpdateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.almoxarife)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.almoxarife)
+    ),
 ):
     localizacao = db.get(Localizacao, localizacao_id)
     if localizacao is None:
@@ -146,11 +164,16 @@ def atualizar_localizacao(
     if (
         "codigo" in alteracoes
         and alteracoes["codigo"] != localizacao.codigo
-        and db.scalar(select(Localizacao.id).where(
-            Localizacao.codigo == alteracoes["codigo"], Localizacao.id != localizacao_id,
-        ))
+        and db.scalar(
+            select(Localizacao.id).where(
+                Localizacao.codigo == alteracoes["codigo"],
+                Localizacao.id != localizacao_id,
+            )
+        )
     ):
-        raise HTTPException(status_code=409, detail="Código de localização já cadastrado")
+        raise HTTPException(
+            status_code=409, detail="Código de localização já cadastrado"
+        )
     for field, value in alteracoes.items():
         setattr(localizacao, field, value)
     _salvar(db)
@@ -162,24 +185,40 @@ def atualizar_localizacao(
 def desativar_localizacao(
     localizacao_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.almoxarife)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.almoxarife)
+    ),
 ):
     db.rollback()
     try:
         with db.begin():
             localizacao = db.scalar(
-                select(Localizacao).where(Localizacao.id == localizacao_id).with_for_update()
+                select(Localizacao)
+                .where(Localizacao.id == localizacao_id)
+                .with_for_update()
             )
             if localizacao is None:
-                raise HTTPException(status_code=404, detail="Localização não encontrada")
-            quantidade = db.scalar(select(func.count()).select_from(Estoque).where(
-                Estoque.localizacao_id == localizacao_id,
-            )) or 0
+                raise HTTPException(
+                    status_code=404, detail="Localização não encontrada"
+                )
+            quantidade = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(Estoque)
+                    .where(
+                        Estoque.localizacao_id == localizacao_id,
+                    )
+                )
+                or 0
+            )
             if quantidade:
-                raise HTTPException(status_code=409, detail={
-                    "mensagem": "A localização ainda é usada por materiais em estoque",
-                    "materiais_vinculados": quantidade,
-                })
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "mensagem": "A localização ainda é usada por materiais em estoque",
+                        "materiais_vinculados": quantidade,
+                    },
+                )
             localizacao.ativo = False
             db.flush()
             return {"message": "Localização desativada com sucesso"}

@@ -51,7 +51,9 @@ class ConcluirRequest(BaseModel):
     permitir_parcial: bool = False
 
 
-def _conditions(usuario, status_filtro, setor_id, usuario_solicitante_id, numero, data_de, data_ate):
+def _conditions(
+    usuario, status_filtro, setor_id, usuario_solicitante_id, numero, data_de, data_ate
+):
     conditions = []
     if usuario.perfil == PerfilEnum.solicitante:
         conditions.append(Requisicao.usuario_solicitante_id == usuario.id)
@@ -64,9 +66,13 @@ def _conditions(usuario, status_filtro, setor_id, usuario_solicitante_id, numero
     if numero:
         conditions.append(Requisicao.numero.ilike(f"%{numero.strip()}%"))
     if data_de is not None:
-        conditions.append(Requisicao.data_solicitacao >= datetime.combine(data_de, time.min))
+        conditions.append(
+            Requisicao.data_solicitacao >= datetime.combine(data_de, time.min)
+        )
     if data_ate is not None:
-        conditions.append(Requisicao.data_solicitacao <= datetime.combine(data_ate, time.max))
+        conditions.append(
+            Requisicao.data_solicitacao <= datetime.combine(data_ate, time.max)
+        )
     return conditions
 
 
@@ -111,7 +117,10 @@ def _detalhe(db: Session, requisicao_id: int) -> dict:
 def _anexar_observacao(atual: str | None, adicional: str) -> str:
     valor = f"{atual}\n{adicional}" if atual else adicional
     if len(valor) > 500:
-        raise HTTPException(status_code=409, detail="O histórico excede o limite de observação permitido")
+        raise HTTPException(
+            status_code=409,
+            detail="O histórico excede o limite de observação permitido",
+        )
     return valor
 
 
@@ -126,22 +135,46 @@ def listar_requisicoes(
     data_de: date | None = None,
     data_ate: date | None = None,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(
-        PerfilEnum.solicitante, PerfilEnum.almoxarife, PerfilEnum.gestor, PerfilEnum.admin,
-    )),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(
+            PerfilEnum.solicitante,
+            PerfilEnum.almoxarife,
+            PerfilEnum.gestor,
+            PerfilEnum.admin,
+        )
+    ),
 ):
     if data_de is not None and data_ate is not None and data_de > data_ate:
-        raise HTTPException(status_code=400, detail="data_de não pode ser posterior a data_ate")
-    conditions = _conditions(usuario_atual, status_filtro, setor_id, usuario_solicitante_id, numero, data_de, data_ate)
-    total = db.scalar(select(func.count()).select_from(Requisicao).where(*conditions)) or 0
-    item_count = select(func.count()).select_from(RequisicaoItem).where(
-        RequisicaoItem.requisicao_id == Requisicao.id,
-    ).scalar_subquery()
+        raise HTTPException(
+            status_code=400, detail="data_de não pode ser posterior a data_ate"
+        )
+    conditions = _conditions(
+        usuario_atual,
+        status_filtro,
+        setor_id,
+        usuario_solicitante_id,
+        numero,
+        data_de,
+        data_ate,
+    )
+    total = (
+        db.scalar(select(func.count()).select_from(Requisicao).where(*conditions)) or 0
+    )
+    item_count = (
+        select(func.count())
+        .select_from(RequisicaoItem)
+        .where(
+            RequisicaoItem.requisicao_id == Requisicao.id,
+        )
+        .scalar_subquery()
+    )
     rows = db.execute(
-        _header_query().add_columns(item_count.label("quantidade_itens"))
+        _header_query()
+        .add_columns(item_count.label("quantidade_itens"))
         .where(*conditions)
         .order_by(Requisicao.data_solicitacao.desc(), Requisicao.id.desc())
-        .offset((page - 1) * limit).limit(limit)
+        .offset((page - 1) * limit)
+        .limit(limit)
     ).all()
     dados = []
     for row in rows:
@@ -157,9 +190,14 @@ def listar_pendentes(
     limit: int = Query(default=20, ge=1, le=100),
     todos: bool = False,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(
-        PerfilEnum.solicitante, PerfilEnum.almoxarife, PerfilEnum.gestor, PerfilEnum.admin,
-    )),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(
+            PerfilEnum.solicitante,
+            PerfilEnum.almoxarife,
+            PerfilEnum.gestor,
+            PerfilEnum.admin,
+        )
+    ),
 ):
     clauses = []
     params: dict[str, object] = {}
@@ -176,32 +214,59 @@ def listar_pendentes(
             .order_by(AtendimentoAlmoxarifado.data_inicio.desc())
         )
         if atendimento is None:
-            raise HTTPException(status_code=409, detail="Inicie um atendimento para consultar as requisições do setor")
+            raise HTTPException(
+                status_code=409,
+                detail="Inicie um atendimento para consultar as requisições do setor",
+            )
         clauses.append("setor_id = :setor_id")
         params["setor_id"] = atendimento.setor_id
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
-    total = db.execute(text("SELECT COUNT(*) FROM vw_requisicoes_pendentes" + where), params).scalar_one()
-    rows = db.execute(
-        text("SELECT * FROM vw_requisicoes_pendentes" + where
-             + " ORDER BY data ASC, requisicao_id ASC LIMIT :limit OFFSET :offset"),
-        {**params, "limit": limit, "offset": (page - 1) * limit},
-    ).mappings().all()
-    return {"dados": [dict(row) for row in rows], "total": total, "page": page, "limit": limit}
+    total = db.execute(
+        text("SELECT COUNT(*) FROM vw_requisicoes_pendentes" + where), params
+    ).scalar_one()
+    rows = (
+        db.execute(
+            text(
+                "SELECT * FROM vw_requisicoes_pendentes"
+                + where
+                + " ORDER BY data ASC, requisicao_id ASC LIMIT :limit OFFSET :offset"
+            ),
+            {**params, "limit": limit, "offset": (page - 1) * limit},
+        )
+        .mappings()
+        .all()
+    )
+    return {
+        "dados": [dict(row) for row in rows],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
 
 
 @router.get("/{requisicao_id}")
 def obter_requisicao(
     requisicao_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(
-        PerfilEnum.solicitante, PerfilEnum.almoxarife, PerfilEnum.gestor, PerfilEnum.admin,
-    )),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(
+            PerfilEnum.solicitante,
+            PerfilEnum.almoxarife,
+            PerfilEnum.gestor,
+            PerfilEnum.admin,
+        )
+    ),
 ):
     row = db.execute(_header_query().where(Requisicao.id == requisicao_id)).first()
     if row is None:
         raise HTTPException(status_code=404, detail="Requisição não encontrada")
-    if usuario_atual.perfil == PerfilEnum.solicitante and row[0].usuario_solicitante_id != usuario_atual.id:
-        raise HTTPException(status_code=403, detail="Você só pode consultar suas próprias requisições")
+    if (
+        usuario_atual.perfil == PerfilEnum.solicitante
+        and row[0].usuario_solicitante_id != usuario_atual.id
+    ):
+        raise HTTPException(
+            status_code=403, detail="Você só pode consultar suas próprias requisições"
+        )
     result = _header_dict(row)
     result["itens"] = obter_itens_requisicao(db, requisicao_id)
     return result
@@ -211,41 +276,68 @@ def obter_requisicao(
 def criar_requisicao(
     payload: RequisicaoCreateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.solicitante, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.solicitante, PerfilEnum.admin)
+    ),
 ):
     usuario_id = usuario_atual.id
     perfil = usuario_atual.perfil
     material_ids = [item.material_id for item in payload.itens]
     if len(material_ids) != len(set(material_ids)):
-        raise HTTPException(status_code=400, detail="Não informe o mesmo material mais de uma vez")
+        raise HTTPException(
+            status_code=400, detail="Não informe o mesmo material mais de uma vez"
+        )
     if perfil == PerfilEnum.solicitante:
         setor_id = usuario_atual.setor_id
         if setor_id is None:
-            raise HTTPException(status_code=409, detail="O solicitante não possui setor cadastrado")
+            raise HTTPException(
+                status_code=409, detail="O solicitante não possui setor cadastrado"
+            )
     else:
         setor_id = payload.setor_id
         if setor_id is None:
-            raise HTTPException(status_code=400, detail="setor_id é obrigatório para ADMIN")
+            raise HTTPException(
+                status_code=400, detail="setor_id é obrigatório para ADMIN"
+            )
     db.rollback()
     for tentativa in range(3):
         try:
             with db.begin():
                 setor = db.get(Setor, setor_id)
                 if setor is None or not setor.ativo:
-                    raise HTTPException(status_code=404, detail="Setor não encontrado ou inativo")
+                    raise HTTPException(
+                        status_code=404, detail="Setor não encontrado ou inativo"
+                    )
                 materiais = db.scalars(
-                    select(Material).where(Material.id.in_(material_ids), Material.ativo.is_(True))
+                    select(Material).where(
+                        Material.id.in_(material_ids), Material.ativo.is_(True)
+                    )
                 ).all()
                 if {material.id for material in materiais} != set(material_ids):
-                    raise HTTPException(status_code=404, detail="Um ou mais materiais não existem ou estão inativos")
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Um ou mais materiais não existem ou estão inativos",
+                    )
                 ano = datetime.now().astimezone().year
                 prefixo = f"REQ-{ano}-"
-                sequencia = db.scalar(
-                    select(func.coalesce(func.max(cast(func.substr(Requisicao.numero, 10), Integer)), 0))
-                    .where(Requisicao.numero.like(f"{prefixo}%"))
-                ) or 0
+                sequencia = (
+                    db.scalar(
+                        select(
+                            func.coalesce(
+                                func.max(
+                                    cast(func.substr(Requisicao.numero, 10), Integer)
+                                ),
+                                0,
+                            )
+                        ).where(Requisicao.numero.like(f"{prefixo}%"))
+                    )
+                    or 0
+                )
                 if sequencia >= 999999:
-                    raise HTTPException(status_code=409, detail="Limite anual de números de requisição atingido")
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Limite anual de números de requisição atingido",
+                    )
                 requisicao = Requisicao(
                     numero=f"{prefixo}{sequencia + 1:06d}",
                     setor_id=setor_id,
@@ -257,15 +349,17 @@ def criar_requisicao(
                 db.add(requisicao)
                 db.flush()
                 for item in payload.itens:
-                    db.add(RequisicaoItem(
-                        requisicao_id=requisicao.id,
-                        material_id=item.material_id,
-                        quantidade_solicitada=item.quantidade_solicitada,
-                        quantidade_separada=Decimal(0),
-                        quantidade_atendida=Decimal(0),
-                        status=StatusRequisicaoItemEnum.pendente,
-                        observacao=item.observacao,
-                    ))
+                    db.add(
+                        RequisicaoItem(
+                            requisicao_id=requisicao.id,
+                            material_id=item.material_id,
+                            quantidade_solicitada=item.quantidade_solicitada,
+                            quantidade_separada=Decimal(0),
+                            quantidade_atendida=Decimal(0),
+                            status=StatusRequisicaoItemEnum.pendente,
+                            observacao=item.observacao,
+                        )
+                    )
                 db.flush()
             return _detalhe(db, requisicao.id)
         except HTTPException:
@@ -274,7 +368,10 @@ def criar_requisicao(
         except (IntegrityError, OperationalError) as exc:
             db.rollback()
             if tentativa == 2:
-                raise HTTPException(status_code=409, detail="Não foi possível reservar número de requisição; tente novamente") from exc
+                raise HTTPException(
+                    status_code=409,
+                    detail="Não foi possível reservar número de requisição; tente novamente",
+                ) from exc
     raise HTTPException(status_code=409, detail="Não foi possível criar a requisição")
 
 
@@ -283,7 +380,9 @@ def atualizar_requisicao(
     requisicao_id: int,
     payload: RequisicaoUpdateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.solicitante, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.solicitante, PerfilEnum.admin)
+    ),
 ):
     if not payload.model_fields_set:
         raise HTTPException(status_code=400, detail="Informe observacao para atualizar")
@@ -292,13 +391,25 @@ def atualizar_requisicao(
     db.rollback()
     try:
         with db.begin():
-            requisicao = db.scalar(select(Requisicao).where(Requisicao.id == requisicao_id).with_for_update())
+            requisicao = db.scalar(
+                select(Requisicao)
+                .where(Requisicao.id == requisicao_id)
+                .with_for_update()
+            )
             if requisicao is None:
                 raise HTTPException(status_code=404, detail="Requisição não encontrada")
-            if perfil == PerfilEnum.solicitante and requisicao.usuario_solicitante_id != usuario_id:
-                raise HTTPException(status_code=403, detail="Você só pode alterar suas próprias requisições")
+            if (
+                perfil == PerfilEnum.solicitante
+                and requisicao.usuario_solicitante_id != usuario_id
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Você só pode alterar suas próprias requisições",
+                )
             if requisicao.status != StatusRequisicaoEnum.pendente:
-                raise HTTPException(status_code=409, detail="A requisição precisa estar PENDENTE")
+                raise HTTPException(
+                    status_code=409, detail="A requisição precisa estar PENDENTE"
+                )
             requisicao.observacao = payload.observacao
             db.flush()
         return _detalhe(db, requisicao_id)
@@ -312,21 +423,32 @@ def cancelar_requisicao(
     requisicao_id: int,
     payload: CancelarRequest | None = Body(default=None),
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(
-        PerfilEnum.solicitante, PerfilEnum.almoxarife, PerfilEnum.admin,
-    )),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(
+            PerfilEnum.solicitante,
+            PerfilEnum.almoxarife,
+            PerfilEnum.admin,
+        )
+    ),
 ):
     usuario_id = usuario_atual.id
     perfil = usuario_atual.perfil
     db.rollback()
     try:
         with db.begin():
-            requisicao = db.scalar(select(Requisicao).where(Requisicao.id == requisicao_id).with_for_update())
+            requisicao = db.scalar(
+                select(Requisicao)
+                .where(Requisicao.id == requisicao_id)
+                .with_for_update()
+            )
             if requisicao is None:
                 raise HTTPException(status_code=404, detail="Requisição não encontrada")
             if perfil == PerfilEnum.solicitante:
                 if requisicao.usuario_solicitante_id != usuario_id:
-                    raise HTTPException(status_code=403, detail="Você só pode cancelar suas próprias requisições")
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Você só pode cancelar suas próprias requisições",
+                    )
                 allowed = {StatusRequisicaoEnum.pendente}
             else:
                 allowed = {
@@ -335,9 +457,14 @@ def cancelar_requisicao(
                     StatusRequisicaoEnum.separada,
                 }
             if requisicao.status not in allowed:
-                raise HTTPException(status_code=409, detail="A requisição não pode ser cancelada neste estado")
+                raise HTTPException(
+                    status_code=409,
+                    detail="A requisição não pode ser cancelada neste estado",
+                )
             if payload and payload.motivo:
-                requisicao.observacao = _anexar_observacao(requisicao.observacao, f"Cancelamento: {payload.motivo}")
+                requisicao.observacao = _anexar_observacao(
+                    requisicao.observacao, f"Cancelamento: {payload.motivo}"
+                )
             itens = db.scalars(
                 select(RequisicaoItem)
                 .where(RequisicaoItem.requisicao_id == requisicao_id)
@@ -348,21 +475,26 @@ def cancelar_requisicao(
                 if item.quantidade_separada > 0:
                     estoque = buscar_estoque_para_update(item.material_id, db)
                     if estoque is None:
-                        raise HTTPException(status_code=409, detail=f"Estoque do material {item.material_id} não encontrado")
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Estoque do material {item.material_id} não encontrado",
+                        )
                     anterior = estoque.quantidade_atual
                     posterior = anterior + item.quantidade_separada
                     estoque.quantidade_atual = posterior
                     estoque.data_ultima_movimentacao = func.now()
-                    db.add(MovimentacaoEstoque(
-                        material_id=item.material_id,
-                        usuario_id=usuario_id,
-                        requisicao_id=requisicao_id,
-                        tipo=TipoMovimentacaoEnum.devolucao,
-                        quantidade=item.quantidade_separada,
-                        estoque_anterior=anterior,
-                        estoque_posterior=posterior,
-                        observacao=f"Devolução por cancelamento da requisição {requisicao.numero}",
-                    ))
+                    db.add(
+                        MovimentacaoEstoque(
+                            material_id=item.material_id,
+                            usuario_id=usuario_id,
+                            requisicao_id=requisicao_id,
+                            tipo=TipoMovimentacaoEnum.devolucao,
+                            quantidade=item.quantidade_separada,
+                            estoque_anterior=anterior,
+                            estoque_posterior=posterior,
+                            observacao=f"Devolução por cancelamento da requisição {requisicao.numero}",
+                        )
+                    )
                     item.quantidade_separada = Decimal(0)
                     item.quantidade_atendida = Decimal(0)
                 item.status = StatusRequisicaoItemEnum.cancelado
@@ -374,41 +506,62 @@ def cancelar_requisicao(
         raise
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Conflito ao cancelar requisição") from exc
+        raise HTTPException(
+            status_code=409, detail="Conflito ao cancelar requisição"
+        ) from exc
 
 
 @router.patch("/{requisicao_id}/iniciar-separacao")
 def iniciar_separacao(
     requisicao_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)
+    ),
 ):
     usuario_id = usuario_atual.id
     perfil = usuario_atual.perfil
     db.rollback()
     try:
         with db.begin():
-            requisicao = db.scalar(select(Requisicao).where(Requisicao.id == requisicao_id).with_for_update())
+            requisicao = db.scalar(
+                select(Requisicao)
+                .where(Requisicao.id == requisicao_id)
+                .with_for_update()
+            )
             if requisicao is None:
                 raise HTTPException(status_code=404, detail="Requisição não encontrada")
             if requisicao.status != StatusRequisicaoEnum.pendente:
-                separador = db.get(Usuario, requisicao.usuario_separador_id) if requisicao.usuario_separador_id else None
-                raise HTTPException(status_code=409, detail={
-                    "mensagem": "A requisição já foi iniciada ou não está PENDENTE",
-                    "status": requisicao.status.value,
-                    "iniciada_por": separador.nome if separador else None,
-                })
+                separador = (
+                    db.get(Usuario, requisicao.usuario_separador_id)
+                    if requisicao.usuario_separador_id
+                    else None
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "mensagem": "A requisição já foi iniciada ou não está PENDENTE",
+                        "status": requisicao.status.value,
+                        "iniciada_por": separador.nome if separador else None,
+                    },
+                )
             if perfil == PerfilEnum.almoxarife:
                 atendimento = db.scalar(
-                    select(AtendimentoAlmoxarifado).where(
+                    select(AtendimentoAlmoxarifado)
+                    .where(
                         AtendimentoAlmoxarifado.usuario_id == usuario_id,
                         AtendimentoAlmoxarifado.status == StatusAtendimentoEnum.aberto,
-                    ).order_by(AtendimentoAlmoxarifado.data_inicio.desc()).with_for_update()
+                    )
+                    .order_by(AtendimentoAlmoxarifado.data_inicio.desc())
+                    .with_for_update()
                 )
                 setor = db.get(Setor, requisicao.setor_id)
                 if atendimento is None or atendimento.setor_id != requisicao.setor_id:
                     nome_setor = setor.nome if setor else str(requisicao.setor_id)
-                    raise HTTPException(status_code=409, detail=f"Inicie um atendimento para o setor {nome_setor}")
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Inicie um atendimento para o setor {nome_setor}",
+                    )
             requisicao.status = StatusRequisicaoEnum.em_separacao
             requisicao.usuario_separador_id = usuario_id
             requisicao.data_inicio_separacao = func.now()
@@ -424,38 +577,65 @@ def concluir_requisicao(
     requisicao_id: int,
     payload: ConcluirRequest | None = Body(default=None),
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)
+    ),
 ):
     if payload is None:
         payload = ConcluirRequest()
     db.rollback()
     try:
         with db.begin():
-            requisicao = db.scalar(select(Requisicao).where(Requisicao.id == requisicao_id).with_for_update())
+            requisicao = db.scalar(
+                select(Requisicao)
+                .where(Requisicao.id == requisicao_id)
+                .with_for_update()
+            )
             if requisicao is None:
                 raise HTTPException(status_code=404, detail="Requisição não encontrada")
             conclusao_parcial_em_andamento = (
                 requisicao.status == StatusRequisicaoEnum.em_separacao
                 and payload.permitir_parcial
             )
-            if requisicao.status != StatusRequisicaoEnum.separada and not conclusao_parcial_em_andamento:
-                raise HTTPException(status_code=409, detail="A requisição precisa estar SEPARADA para ser concluída")
+            if (
+                requisicao.status != StatusRequisicaoEnum.separada
+                and not conclusao_parcial_em_andamento
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="A requisição precisa estar SEPARADA para ser concluída",
+                )
             itens = db.scalars(
-                select(RequisicaoItem).where(RequisicaoItem.requisicao_id == requisicao_id)
-                .order_by(RequisicaoItem.material_id).with_for_update()
+                select(RequisicaoItem)
+                .where(RequisicaoItem.requisicao_id == requisicao_id)
+                .order_by(RequisicaoItem.material_id)
+                .with_for_update()
             ).all()
-            pendentes = [item for item in itens if item.status == StatusRequisicaoItemEnum.pendente]
+            pendentes = [
+                item
+                for item in itens
+                if item.status == StatusRequisicaoItemEnum.pendente
+            ]
             if pendentes and not payload.permitir_parcial:
-                raise HTTPException(status_code=409, detail={
-                    "mensagem": "Existem itens pendentes; envie permitir_parcial=true para concluir parcialmente",
-                    "itens_pendentes": [
-                        {"id": item.id, "material_id": item.material_id,
-                         "quantidade_pendente": item.quantidade_solicitada - item.quantidade_separada}
-                        for item in pendentes
-                    ],
-                })
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "mensagem": "Existem itens pendentes; envie permitir_parcial=true para concluir parcialmente",
+                        "itens_pendentes": [
+                            {
+                                "id": item.id,
+                                "material_id": item.material_id,
+                                "quantidade_pendente": item.quantidade_solicitada
+                                - item.quantidade_separada,
+                            }
+                            for item in pendentes
+                        ],
+                    },
+                )
             for item in pendentes:
-                quantidade_nao_separada = item.quantidade_solicitada - item.quantidade_separada
+                quantidade_nao_separada = (
+                    item.quantidade_solicitada - item.quantidade_separada
+                )
                 if item.quantidade_separada > 0:
                     item.status = StatusRequisicaoItemEnum.atendido
                     item.quantidade_atendida = item.quantidade_separada

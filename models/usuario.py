@@ -19,13 +19,17 @@ class Usuario(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     nome: Mapped[str] = mapped_column(String(150), nullable=False)
-    login: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    login: Mapped[str] = mapped_column(
+        String(50), unique=True, index=True, nullable=False
+    )
     senha_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     perfil: Mapped[PerfilEnum] = mapped_column(
         Enum(PerfilEnum, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
     )
-    setor_id: Mapped[int | None] = mapped_column(ForeignKey("setores.id"), nullable=True)
+    setor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("setores.id"), nullable=True
+    )
     ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

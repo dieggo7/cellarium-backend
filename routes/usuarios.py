@@ -89,7 +89,9 @@ def list_usuarios(
     limit: int = Query(default=10, ge=1, le=100),
     apenas_ativos: bool = True,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(get_current_user),  # exige estar logado, qualquer perfil
+    usuario_atual: Usuario = Depends(
+        get_current_user
+    ),  # exige estar logado, qualquer perfil
 ):
     query = select(Usuario)
     if apenas_ativos:
@@ -120,13 +122,17 @@ def create_usuario(
     if usuario_atual.perfil != PerfilEnum.admin:
         raise HTTPException(status_code=403, detail="Somente ADMIN pode criar usuários")
     if payload.perfil == PerfilEnum.solicitante and payload.setor_id is None:
-        raise HTTPException(status_code=400, detail="setor_id é obrigatório para SOLICITANTE")
+        raise HTTPException(
+            status_code=400, detail="setor_id é obrigatório para SOLICITANTE"
+        )
     if payload.setor_id is not None:
         from models.setor import Setor
 
         setor = db.get(Setor, payload.setor_id)
         if setor is None or not setor.ativo:
-            raise HTTPException(status_code=404, detail="Setor não encontrado ou inativo")
+            raise HTTPException(
+                status_code=404, detail="Setor não encontrado ou inativo"
+            )
     if db.scalar(select(Usuario).where(Usuario.login == payload.login)):
         raise HTTPException(status_code=409, detail="Login já cadastrado")
 
@@ -159,20 +165,30 @@ def update_usuario(
     usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin)),
 ):
     if usuario_atual.perfil != PerfilEnum.admin:
-        raise HTTPException(status_code=403, detail="Somente ADMIN pode alterar usuários")
+        raise HTTPException(
+            status_code=403, detail="Somente ADMIN pode alterar usuários"
+        )
     usuario = db.get(Usuario, usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
     if usuario_atual.id == usuario_id and (
-        payload.ativo is False or (payload.perfil is not None and payload.perfil != PerfilEnum.admin)
+        payload.ativo is False
+        or (payload.perfil is not None and payload.perfil != PerfilEnum.admin)
     ):
-        raise HTTPException(status_code=409, detail="Um ADMIN não pode desativar ou rebaixar a própria conta")
+        raise HTTPException(
+            status_code=409,
+            detail="Um ADMIN não pode desativar ou rebaixar a própria conta",
+        )
 
     if payload.nome is not None:
         usuario.nome = payload.nome
     if payload.login is not None and payload.login != usuario.login:
-        if db.scalar(select(Usuario.id).where(Usuario.login == payload.login, Usuario.id != usuario_id)):
+        if db.scalar(
+            select(Usuario.id).where(
+                Usuario.login == payload.login, Usuario.id != usuario_id
+            )
+        ):
             raise HTTPException(status_code=409, detail="Login já cadastrado")
         usuario.login = payload.login
     if payload.perfil is not None:
@@ -188,12 +204,16 @@ def update_usuario(
         usuario.senha_hash = get_password_hash(payload.senha)
     if usuario.perfil == PerfilEnum.solicitante:
         if usuario.setor_id is None:
-            raise HTTPException(status_code=400, detail="setor_id é obrigatório para SOLICITANTE")
+            raise HTTPException(
+                status_code=400, detail="setor_id é obrigatório para SOLICITANTE"
+            )
         from models.setor import Setor
 
         setor = db.get(Setor, usuario.setor_id)
         if setor is None or not setor.ativo:
-            raise HTTPException(status_code=404, detail="Setor não encontrado ou inativo")
+            raise HTTPException(
+                status_code=404, detail="Setor não encontrado ou inativo"
+            )
     try:
         db.commit()
     except IntegrityError as exc:
@@ -214,7 +234,9 @@ def delete_usuario(
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     if usuario.id == usuario_atual.id:
-        raise HTTPException(status_code=409, detail="Um ADMIN não pode desativar a própria conta")
+        raise HTTPException(
+            status_code=409, detail="Um ADMIN não pode desativar a própria conta"
+        )
     usuario.ativo = False
     db.commit()
     return {"message": "Usuário desativado com sucesso"}

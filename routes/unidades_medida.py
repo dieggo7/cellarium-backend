@@ -95,7 +95,9 @@ def get_unidade_medida(
 def create_unidade_medida(
     payload: UnidadeMedidaCreateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ) -> UnidadeMedida:
     unidade = UnidadeMedida(nome=payload.nome.strip(), sigla=payload.sigla, ativo=True)
     db.add(unidade)
@@ -109,7 +111,9 @@ def update_unidade_medida(
     unidade_id: int,
     payload: UnidadeMedidaUpdateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ) -> UnidadeMedida:
     unidade = db.get(UnidadeMedida, unidade_id)
     if unidade is None:
@@ -128,7 +132,9 @@ def update_unidade_medida(
 def delete_unidade_medida(
     unidade_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ) -> None:
     unidade = db.get(UnidadeMedida, unidade_id)
     if unidade is None:

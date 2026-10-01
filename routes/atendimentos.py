@@ -23,13 +23,17 @@ class AtendimentoCreateRequest(BaseModel):
     setor_id: int = Field(gt=0)
 
 
-def _atendimento_dict(atendimento: AtendimentoAlmoxarifado, setor: str, usuario: str | None = None):
+def _atendimento_dict(
+    atendimento: AtendimentoAlmoxarifado, setor: str, usuario: str | None = None
+):
     result = {
         "id": atendimento.id,
         "usuario_id": atendimento.usuario_id,
         "setor_id": atendimento.setor_id,
         "setor": setor,
-        "data_inicio": atendimento.data_inicio.isoformat() if atendimento.data_inicio else None,
+        "data_inicio": (
+            atendimento.data_inicio.isoformat() if atendimento.data_inicio else None
+        ),
         "data_fim": atendimento.data_fim.isoformat() if atendimento.data_fim else None,
         "status": atendimento.status,
     }
@@ -51,7 +55,9 @@ def _consulta_atendimento(db: Session, atendimento_id: int):
 def iniciar_atendimento(
     payload: AtendimentoCreateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)
+    ),
 ):
     usuario_id = usuario_atual.id
     db.rollback()
@@ -60,7 +66,9 @@ def iniciar_atendimento(
             db.scalar(select(Usuario).where(Usuario.id == usuario_id).with_for_update())
             setor = db.get(Setor, payload.setor_id)
             if setor is None or not setor.ativo:
-                raise HTTPException(status_code=404, detail="Setor não encontrado ou inativo")
+                raise HTTPException(
+                    status_code=404, detail="Setor não encontrado ou inativo"
+                )
             aberto = db.scalar(
                 select(AtendimentoAlmoxarifado)
                 .where(
@@ -72,7 +80,10 @@ def iniciar_atendimento(
             if aberto is not None:
                 setor_aberto = db.get(Setor, aberto.setor_id)
                 if setor_aberto is None:
-                    raise HTTPException(status_code=409, detail="O setor do atendimento aberto não existe")
+                    raise HTTPException(
+                        status_code=409,
+                        detail="O setor do atendimento aberto não existe",
+                    )
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -110,7 +121,9 @@ def atendimento_ativo(
         .order_by(AtendimentoAlmoxarifado.data_inicio.desc())
     ).first()
     if row is None:
-        raise HTTPException(status_code=404, detail="Você não possui atendimento aberto")
+        raise HTTPException(
+            status_code=404, detail="Você não possui atendimento aberto"
+        )
     return _atendimento_dict(row[0], row[1])
 
 
@@ -124,10 +137,19 @@ def listar_atendimentos(
     data_inicio_de: datetime | None = None,
     data_inicio_ate: datetime | None = None,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
-    if data_inicio_de is not None and data_inicio_ate is not None and data_inicio_de > data_inicio_ate:
-        raise HTTPException(status_code=400, detail="data_inicio_de não pode ser posterior a data_inicio_ate")
+    if (
+        data_inicio_de is not None
+        and data_inicio_ate is not None
+        and data_inicio_de > data_inicio_ate
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="data_inicio_de não pode ser posterior a data_inicio_ate",
+        )
     conditions = []
     if usuario_atual.perfil == PerfilEnum.almoxarife:
         conditions.append(AtendimentoAlmoxarifado.usuario_id == usuario_atual.id)
@@ -142,7 +164,12 @@ def listar_atendimentos(
     if data_inicio_ate is not None:
         conditions.append(AtendimentoAlmoxarifado.data_inicio <= data_inicio_ate)
 
-    total = db.scalar(select(func.count()).select_from(AtendimentoAlmoxarifado).where(*conditions)) or 0
+    total = (
+        db.scalar(
+            select(func.count()).select_from(AtendimentoAlmoxarifado).where(*conditions)
+        )
+        or 0
+    )
     rows = db.execute(
         select(AtendimentoAlmoxarifado, Setor.nome, Usuario.nome)
         .join(Setor, Setor.id == AtendimentoAlmoxarifado.setor_id)
@@ -164,13 +191,20 @@ def listar_atendimentos(
 def detalhe_atendimento(
     atendimento_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     row = _consulta_atendimento(db, atendimento_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Atendimento não encontrado")
-    if usuario_atual.perfil == PerfilEnum.almoxarife and row[0].usuario_id != usuario_atual.id:
-        raise HTTPException(status_code=403, detail="Você só pode consultar seus próprios atendimentos")
+    if (
+        usuario_atual.perfil == PerfilEnum.almoxarife
+        and row[0].usuario_id != usuario_atual.id
+    ):
+        raise HTTPException(
+            status_code=403, detail="Você só pode consultar seus próprios atendimentos"
+        )
     return _atendimento_dict(row[0], row[1], row[2])
 
 
@@ -178,7 +212,9 @@ def detalhe_atendimento(
 def encerrar_atendimento(
     atendimento_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)
+    ),
 ):
     usuario_id = usuario_atual.id
     perfil = usuario_atual.perfil
@@ -191,18 +227,27 @@ def encerrar_atendimento(
                 .with_for_update()
             )
             if atendimento is None:
-                raise HTTPException(status_code=404, detail="Atendimento não encontrado")
+                raise HTTPException(
+                    status_code=404, detail="Atendimento não encontrado"
+                )
             if perfil != PerfilEnum.admin and atendimento.usuario_id != usuario_id:
-                raise HTTPException(status_code=403, detail="Você só pode encerrar seu próprio atendimento")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Você só pode encerrar seu próprio atendimento",
+                )
             if atendimento.status != StatusAtendimentoEnum.aberto:
-                raise HTTPException(status_code=409, detail="O atendimento não está aberto")
+                raise HTTPException(
+                    status_code=409, detail="O atendimento não está aberto"
+                )
             atendimento.status = StatusAtendimentoEnum.encerrado
             atendimento.data_fim = func.now()
             db.flush()
             db.refresh(atendimento)
             setor = db.get(Setor, atendimento.setor_id)
             if setor is None:
-                raise HTTPException(status_code=409, detail="O setor do atendimento não existe")
+                raise HTTPException(
+                    status_code=409, detail="O setor do atendimento não existe"
+                )
             return _atendimento_dict(atendimento, setor.nome)
     except HTTPException:
         db.rollback()

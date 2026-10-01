@@ -38,7 +38,9 @@ class MaterialCreateRequest(BaseModel):
     unidade_medida_id: int = Field(gt=0)
     especificacao: str | None = Field(default=None, max_length=255)
     qr_code: str | None = Field(default=None, max_length=36)
-    peso_unitario_g: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=6)
+    peso_unitario_g: Decimal | None = Field(
+        default=None, gt=0, max_digits=12, decimal_places=6
+    )
 
     @field_validator("codigo", "descricao")
     @classmethod
@@ -56,7 +58,9 @@ class MaterialUpdateRequest(BaseModel):
     unidade_medida_id: int | None = Field(default=None, gt=0)
     especificacao: str | None = Field(default=None, max_length=255)
     qr_code: str | None = Field(default=None, max_length=36)
-    peso_unitario_g: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=6)
+    peso_unitario_g: Decimal | None = Field(
+        default=None, gt=0, max_digits=12, decimal_places=6
+    )
     ativo: bool | None = None
 
     @field_validator("codigo", "descricao")
@@ -97,13 +101,17 @@ def list_materiais(
     query = select(Material)
     if busca:
         termo = f"%{busca.strip()}%"
-        query = query.where(or_(Material.codigo.ilike(termo), Material.descricao.ilike(termo)))
+        query = query.where(
+            or_(Material.codigo.ilike(termo), Material.descricao.ilike(termo))
+        )
     if categoria_id is not None:
         query = query.where(Material.categoria_id == categoria_id)
     if ativo is not None:
         query = query.where(Material.ativo.is_(ativo))
 
-    materiais = db.scalars(query.order_by(Material.descricao).offset((page - 1) * limit).limit(limit)).all()
+    materiais = db.scalars(
+        query.order_by(Material.descricao).offset((page - 1) * limit).limit(limit)
+    ).all()
     return [_to_item(m) for m in materiais]
 
 
@@ -123,19 +131,29 @@ def get_material(
 def create_material(
     payload: MaterialCreateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     categoria = db.get(Categoria, payload.categoria_id)
     unidade = db.get(UnidadeMedida, payload.unidade_medida_id)
     if categoria is None or not categoria.ativo:
-        raise HTTPException(status_code=404, detail="Categoria não encontrada ou inativa")
+        raise HTTPException(
+            status_code=404, detail="Categoria não encontrada ou inativa"
+        )
     if unidade is None or not unidade.ativo:
-        raise HTTPException(status_code=404, detail="Unidade de medida não encontrada ou inativa")
+        raise HTTPException(
+            status_code=404, detail="Unidade de medida não encontrada ou inativa"
+        )
     if db.scalar(select(Material).where(Material.codigo == payload.codigo)):
         raise HTTPException(status_code=409, detail="Código de material já cadastrado")
 
-    if payload.qr_code and db.scalar(select(Material).where(Material.qr_code == payload.qr_code)):
-        raise HTTPException(status_code=409, detail="Identificador legado já cadastrado")
+    if payload.qr_code and db.scalar(
+        select(Material).where(Material.qr_code == payload.qr_code)
+    ):
+        raise HTTPException(
+            status_code=409, detail="Identificador legado já cadastrado"
+        )
 
     material = Material(
         codigo=payload.codigo,
@@ -152,7 +170,10 @@ def create_material(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Código de material ou identificador legado já cadastrado") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Código de material ou identificador legado já cadastrado",
+        ) from exc
     db.refresh(material)
 
     return _to_item(material)
@@ -163,15 +184,21 @@ def update_material(
     material_id: int,
     payload: MaterialUpdateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
-    material = db.scalar(select(Material).where(Material.id == material_id).with_for_update())
+    material = db.scalar(
+        select(Material).where(Material.id == material_id).with_for_update()
+    )
     if not material:
         raise HTTPException(status_code=404, detail="Material não encontrado")
 
     if payload.codigo is not None and payload.codigo != material.codigo:
         if db.scalar(select(Material).where(Material.codigo == payload.codigo)):
-            raise HTTPException(status_code=409, detail="Código de material já cadastrado")
+            raise HTTPException(
+                status_code=409, detail="Código de material já cadastrado"
+            )
         material.codigo = payload.codigo
 
     if (
@@ -180,7 +207,9 @@ def update_material(
         and payload.qr_code != material.qr_code
         and db.scalar(select(Material).where(Material.qr_code == payload.qr_code))
     ):
-        raise HTTPException(status_code=409, detail="Identificador legado já cadastrado")
+        raise HTTPException(
+            status_code=409, detail="Identificador legado já cadastrado"
+        )
     if "qr_code" in payload.model_fields_set:
         material.qr_code = payload.qr_code
     if "peso_unitario_g" in payload.model_fields_set:
@@ -191,12 +220,16 @@ def update_material(
     if payload.categoria_id is not None:
         categoria = db.get(Categoria, payload.categoria_id)
         if categoria is None or not categoria.ativo:
-            raise HTTPException(status_code=404, detail="Categoria não encontrada ou inativa")
+            raise HTTPException(
+                status_code=404, detail="Categoria não encontrada ou inativa"
+            )
         material.categoria_id = payload.categoria_id
     if payload.unidade_medida_id is not None:
         unidade = db.get(UnidadeMedida, payload.unidade_medida_id)
         if unidade is None or not unidade.ativo:
-            raise HTTPException(status_code=404, detail="Unidade de medida não encontrada ou inativa")
+            raise HTTPException(
+                status_code=404, detail="Unidade de medida não encontrada ou inativa"
+            )
         material.unidade_medida_id = payload.unidade_medida_id
     if payload.especificacao is not None:
         material.especificacao = payload.especificacao
@@ -207,7 +240,10 @@ def update_material(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Código de material ou identificador legado já cadastrado") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Código de material ou identificador legado já cadastrado",
+        ) from exc
     db.refresh(material)
 
     return _to_item(material)
@@ -217,9 +253,13 @@ def update_material(
 def delete_material(
     material_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
-    material = db.scalar(select(Material).where(Material.id == material_id).with_for_update())
+    material = db.scalar(
+        select(Material).where(Material.id == material_id).with_for_update()
+    )
     if not material:
         raise HTTPException(status_code=404, detail="Material não encontrado")
     material.ativo = False

@@ -56,11 +56,15 @@ def _salvar(db: Session) -> None:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Nome ou código de setor já cadastrado") from exc
+        raise HTTPException(
+            status_code=409, detail="Nome ou código de setor já cadastrado"
+        ) from exc
 
 
 def _to_item(setor: Setor) -> SetorItem:
-    return SetorItem(id=setor.id, nome=setor.nome, codigo=setor.codigo, ativo=setor.ativo)
+    return SetorItem(
+        id=setor.id, nome=setor.nome, codigo=setor.codigo, ativo=setor.ativo
+    )
 
 
 @router.get("", response_model=list[SetorItem])
@@ -95,7 +99,9 @@ def get_setor(
 def create_setor(
     payload: SetorCreateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     if db.scalar(select(Setor).where(Setor.codigo == payload.codigo)):
         raise HTTPException(status_code=409, detail="Código de setor já cadastrado")
@@ -116,7 +122,9 @@ def update_setor(
     setor_id: int,
     payload: SetorUpdateRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     setor = db.scalar(select(Setor).where(Setor.id == setor_id).with_for_update())
     if not setor:
@@ -124,17 +132,27 @@ def update_setor(
 
     alteracoes = payload.model_dump(exclude_unset=True)
     if not alteracoes:
-        raise HTTPException(status_code=400, detail="Informe ao menos um campo para atualizar")
+        raise HTTPException(
+            status_code=400, detail="Informe ao menos um campo para atualizar"
+        )
     if (
         "nome" in alteracoes
         and alteracoes["nome"] != setor.nome
-        and db.scalar(select(Setor.id).where(Setor.nome == alteracoes["nome"], Setor.id != setor_id))
+        and db.scalar(
+            select(Setor.id).where(
+                Setor.nome == alteracoes["nome"], Setor.id != setor_id
+            )
+        )
     ):
         raise HTTPException(status_code=409, detail="Nome de setor já cadastrado")
     if (
         "codigo" in alteracoes
         and alteracoes["codigo"] != setor.codigo
-        and db.scalar(select(Setor.id).where(Setor.codigo == alteracoes["codigo"], Setor.id != setor_id))
+        and db.scalar(
+            select(Setor.id).where(
+                Setor.codigo == alteracoes["codigo"], Setor.id != setor_id
+            )
+        )
     ):
         raise HTTPException(status_code=409, detail="Código de setor já cadastrado")
     if payload.nome is not None:
@@ -154,7 +172,9 @@ def update_setor(
 def delete_setor(
     setor_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     setor = db.get(Setor, setor_id)
     if not setor:

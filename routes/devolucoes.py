@@ -68,70 +68,118 @@ def _devolucao_dict(devolucao: Devolucao) -> dict:
 @router.post("", status_code=status.HTTP_201_CREATED)
 def registrar_devolucao(
     payload: DevolucaoCreateRequest,
-    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=128),
+    idempotency_key: str = Header(
+        ..., alias="Idempotency-Key", min_length=1, max_length=128
+    ),
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.solicitante, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.solicitante, PerfilEnum.admin)
+    ),
 ):
     operador_id = usuario_atual.id
     idempotency_key = idempotency_key.strip()
     if not idempotency_key:
-        raise HTTPException(status_code=400, detail="Idempotency-Key não pode estar vazia")
+        raise HTTPException(
+            status_code=400, detail="Idempotency-Key não pode estar vazia"
+        )
 
     db.rollback()
     try:
         with db.begin():
-            if db.scalar(select(Devolucao.id).where(Devolucao.idempotency_key == idempotency_key)):
-                raise HTTPException(status_code=409, detail="Esta devolução já foi registrada")
+            if db.scalar(
+                select(Devolucao.id).where(Devolucao.idempotency_key == idempotency_key)
+            ):
+                raise HTTPException(
+                    status_code=409, detail="Esta devolução já foi registrada"
+                )
 
             item_ref = db.get(RequisicaoItem, payload.requisicao_item_id)
             if item_ref is None:
-                raise HTTPException(status_code=404, detail="Item de requisição não encontrado")
+                raise HTTPException(
+                    status_code=404, detail="Item de requisição não encontrado"
+                )
             requisicao = db.scalar(
-                select(Requisicao).where(Requisicao.id == item_ref.requisicao_id).with_for_update()
+                select(Requisicao)
+                .where(Requisicao.id == item_ref.requisicao_id)
+                .with_for_update()
             )
             item = db.scalar(
-                select(RequisicaoItem).where(
+                select(RequisicaoItem)
+                .where(
                     RequisicaoItem.id == payload.requisicao_item_id,
                     RequisicaoItem.requisicao_id == item_ref.requisicao_id,
-                ).with_for_update()
+                )
+                .with_for_update()
             )
             if requisicao is None or item is None:
-                raise HTTPException(status_code=404, detail="Item de requisição não encontrado")
-            if usuario_atual.perfil == PerfilEnum.solicitante and requisicao.usuario_solicitante_id != operador_id:
-                raise HTTPException(status_code=403, detail="Você só pode devolver itens das suas requisições")
-            if requisicao.status != StatusRequisicaoEnum.atendida or item.status != StatusRequisicaoItemEnum.atendido:
-                raise HTTPException(status_code=409, detail="A devolução exige um item já atendido")
+                raise HTTPException(
+                    status_code=404, detail="Item de requisição não encontrado"
+                )
+            if (
+                usuario_atual.perfil == PerfilEnum.solicitante
+                and requisicao.usuario_solicitante_id != operador_id
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Você só pode devolver itens das suas requisições",
+                )
+            if (
+                requisicao.status != StatusRequisicaoEnum.atendida
+                or item.status != StatusRequisicaoItemEnum.atendido
+            ):
+                raise HTTPException(
+                    status_code=409, detail="A devolução exige um item já atendido"
+                )
 
             material = db.scalar(
-                select(Material).where(
+                select(Material)
+                .where(
                     Material.id == item.material_id,
                     Material.qr_code == payload.qr_code,
                     Material.ativo.is_(True),
-                ).with_for_update()
+                )
+                .with_for_update()
             )
             if material is None:
-                raise HTTPException(status_code=404, detail="QR Code não corresponde ao material do item")
+                raise HTTPException(
+                    status_code=404,
+                    detail="QR Code não corresponde ao material do item",
+                )
             if material.peso_unitario_g is None or material.peso_unitario_g <= 0:
-                raise HTTPException(status_code=409, detail="Material sem peso unitário válido cadastrado")
+                raise HTTPException(
+                    status_code=409,
+                    detail="Material sem peso unitário válido cadastrado",
+                )
 
             quantidade = (payload.peso_total_g / material.peso_unitario_g).quantize(
-                Decimal("0.001"), rounding=ROUND_HALF_UP,
+                Decimal("0.001"),
+                rounding=ROUND_HALF_UP,
             )
             if quantidade <= 0:
-                raise HTTPException(status_code=400, detail="Peso insuficiente para calcular uma unidade devolvida")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Peso insuficiente para calcular uma unidade devolvida",
+                )
             quantidade_reservada = db.scalar(
-                select(func.coalesce(func.sum(Devolucao.quantidade_calculada), 0)).where(
+                select(
+                    func.coalesce(func.sum(Devolucao.quantidade_calculada), 0)
+                ).where(
                     Devolucao.requisicao_item_id == item.id,
-                    Devolucao.status.in_([StatusDevolucaoEnum.pendente, StatusDevolucaoEnum.aceita]),
+                    Devolucao.status.in_(
+                        [StatusDevolucaoEnum.pendente, StatusDevolucaoEnum.aceita]
+                    ),
                 )
             ) or Decimal(0)
             disponivel = item.quantidade_atendida - quantidade_reservada
             if quantidade > disponivel:
-                raise HTTPException(status_code=409, detail={
-                    "mensagem": "A quantidade pesada excede o saldo atendido ainda não devolvido",
-                    "quantidade_disponivel": str(disponivel),
-                    "quantidade_calculada": str(quantidade),
-                })
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "mensagem": "A quantidade pesada excede o saldo atendido ainda não devolvido",
+                        "quantidade_disponivel": str(disponivel),
+                        "quantidade_calculada": str(quantidade),
+                    },
+                )
 
             devolucao = Devolucao(
                 requisicao_item_id=item.id,
@@ -152,10 +200,16 @@ def registrar_devolucao(
         raise
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Conflito ao registrar devolução; verifique a chave de idempotência") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Conflito ao registrar devolução; verifique a chave de idempotência",
+        ) from exc
     except OperationalError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Conflito concorrente ao registrar devolução; tente novamente") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Conflito concorrente ao registrar devolução; tente novamente",
+        ) from exc
 
 
 @router.get("/pendentes")
@@ -163,25 +217,41 @@ def listar_devolucoes_pendentes(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)
+    ),
 ):
     query = select(Devolucao).where(Devolucao.status == StatusDevolucaoEnum.pendente)
-    total = db.scalar(select(func.count()).select_from(Devolucao).where(
-        Devolucao.status == StatusDevolucaoEnum.pendente,
-    )) or 0
+    total = (
+        db.scalar(
+            select(func.count())
+            .select_from(Devolucao)
+            .where(
+                Devolucao.status == StatusDevolucaoEnum.pendente,
+            )
+        )
+        or 0
+    )
     devolucoes = db.scalars(
         query.order_by(Devolucao.created_at, Devolucao.id)
         .offset((page - 1) * limit)
         .limit(limit)
     ).all()
-    return {"dados": [_devolucao_dict(item) for item in devolucoes], "total": total, "page": page, "limit": limit}
+    return {
+        "dados": [_devolucao_dict(item) for item in devolucoes],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
 
 
 @router.patch("/{devolucao_id}/aceitar")
 def aceitar_devolucao(
     devolucao_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)
+    ),
 ):
     db.rollback()
     try:
@@ -191,12 +261,18 @@ def aceitar_devolucao(
                 raise HTTPException(status_code=404, detail="Devolução não encontrada")
             item_ref = db.get(RequisicaoItem, devolucao_ref.requisicao_item_id)
             if item_ref is None:
-                raise HTTPException(status_code=404, detail="Item da devolução não encontrado")
+                raise HTTPException(
+                    status_code=404, detail="Item da devolução não encontrado"
+                )
             requisicao = db.scalar(
-                select(Requisicao).where(Requisicao.id == item_ref.requisicao_id).with_for_update()
+                select(Requisicao)
+                .where(Requisicao.id == item_ref.requisicao_id)
+                .with_for_update()
             )
             item = db.scalar(
-                select(RequisicaoItem).where(RequisicaoItem.id == item_ref.id).with_for_update()
+                select(RequisicaoItem)
+                .where(RequisicaoItem.id == item_ref.id)
+                .with_for_update()
             )
             devolucao = db.scalar(
                 select(Devolucao).where(Devolucao.id == devolucao_id).with_for_update()
@@ -204,16 +280,26 @@ def aceitar_devolucao(
             if requisicao is None or item is None or devolucao is None:
                 raise HTTPException(status_code=404, detail="Devolução não encontrada")
             if devolucao.status != StatusDevolucaoEnum.pendente:
-                raise HTTPException(status_code=409, detail="A devolução já foi analisada")
+                raise HTTPException(
+                    status_code=409, detail="A devolução já foi analisada"
+                )
 
             idempotency_key = f"devolucao:{devolucao.id}"
-            if db.scalar(select(MovimentacaoEstoque.id).where(
-                MovimentacaoEstoque.idempotency_key == idempotency_key,
-            )):
-                raise HTTPException(status_code=409, detail="O crédito desta devolução já foi registrado")
+            if db.scalar(
+                select(MovimentacaoEstoque.id).where(
+                    MovimentacaoEstoque.idempotency_key == idempotency_key,
+                )
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="O crédito desta devolução já foi registrado",
+                )
             estoque = buscar_estoque_para_update(item.material_id, db)
             if estoque is None:
-                raise HTTPException(status_code=409, detail="Não existe registro de estoque para este material")
+                raise HTTPException(
+                    status_code=409,
+                    detail="Não existe registro de estoque para este material",
+                )
 
             anterior = estoque.quantidade_atual
             posterior = anterior + devolucao.quantidade_calculada
@@ -247,7 +333,9 @@ def aceitar_devolucao(
         raise
     except (IntegrityError, OperationalError) as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Conflito ao aceitar devolução; tente novamente") from exc
+        raise HTTPException(
+            status_code=409, detail="Conflito ao aceitar devolução; tente novamente"
+        ) from exc
 
 
 @router.patch("/{devolucao_id}/rejeitar")
@@ -255,7 +343,9 @@ def rejeitar_devolucao(
     devolucao_id: int,
     payload: DevolucaoRejeitarRequest,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)
+    ),
 ):
     db.rollback()
     try:
@@ -266,7 +356,9 @@ def rejeitar_devolucao(
             if devolucao is None:
                 raise HTTPException(status_code=404, detail="Devolução não encontrada")
             if devolucao.status != StatusDevolucaoEnum.pendente:
-                raise HTTPException(status_code=409, detail="A devolução já foi analisada")
+                raise HTTPException(
+                    status_code=409, detail="A devolução já foi analisada"
+                )
             devolucao.status = StatusDevolucaoEnum.rejeitada
             devolucao.usuario_analise_id = usuario_atual.id
             devolucao.analisada_at = func.now()

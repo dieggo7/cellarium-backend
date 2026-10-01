@@ -27,9 +27,27 @@ class ProjectCreateRequest(BaseModel):
 
 
 PROJECTS_DB = [
-    ProjectItem(id=1, name="Site Institucional", description="Landing page para o cliente", status="done", owner_id=1),
-    ProjectItem(id=2, name="Dashboard Admin", description="Painel de métricas internas", status="in_progress", owner_id=2),
-    ProjectItem(id=3, name="Portal do Cliente", description="Area para gestão de pedidos", status="draft", owner_id=3),
+    ProjectItem(
+        id=1,
+        name="Site Institucional",
+        description="Landing page para o cliente",
+        status="done",
+        owner_id=1,
+    ),
+    ProjectItem(
+        id=2,
+        name="Dashboard Admin",
+        description="Painel de métricas internas",
+        status="in_progress",
+        owner_id=2,
+    ),
+    ProjectItem(
+        id=3,
+        name="Portal do Cliente",
+        description="Area para gestão de pedidos",
+        status="draft",
+        owner_id=3,
+    ),
 ]
 
 
@@ -57,7 +75,9 @@ def get_project(project_id: int, usuario_atual: Usuario = Depends(get_current_us
 @router.post("", response_model=ProjectItem, status_code=201)
 def create_project(
     payload: ProjectCreateRequest,
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     new_project = ProjectItem(
         id=max((project.id for project in PROJECTS_DB), default=0) + 1,
@@ -74,7 +94,9 @@ def create_project(
 def update_project(
     project_id: int,
     payload: ProjectCreateRequest,
-    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.admin, PerfilEnum.gestor)
+    ),
 ):
     for index, project in enumerate(PROJECTS_DB):
         if project.id == project_id:
