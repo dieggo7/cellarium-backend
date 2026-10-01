@@ -164,6 +164,93 @@ def preparar_requisicao_atendida(factory, ids):
         item.quantidade_atendida = Decimal(5)
 
 
+def preparar_devolucoes_para_leitura(client, factory, current_user):
+    ids = seed_inventory(factory)
+    preparar_requisicao_atendida(factory, ids)
+    with factory.begin() as db:
+        solicitante2 = Usuario(
+            nome="Solicitante Dois",
+            login=f"solicitante-{uuid4().hex[:8]}",
+            senha_hash="x",
+            perfil=PerfilEnum.solicitante,
+            setor_id=ids["setor_id"],
+            ativo=True,
+        )
+        gestor = Usuario(
+            nome="Gestor",
+            login=f"gestor-{uuid4().hex[:8]}",
+            senha_hash="x",
+            perfil=PerfilEnum.gestor,
+            ativo=True,
+        )
+        db.add_all([solicitante2, gestor])
+        db.flush()
+        requisicao2 = Requisicao(
+            numero=f"REQ-{uuid4().hex[:10]}",
+            setor_id=ids["setor_id"],
+            usuario_solicitante_id=solicitante2.id,
+            status=StatusRequisicaoEnum.atendida,
+        )
+        db.add(requisicao2)
+        db.flush()
+        item2 = RequisicaoItem(
+            requisicao_id=requisicao2.id,
+            material_id=ids["material_id"],
+            quantidade_solicitada=Decimal(3),
+            quantidade_separada=Decimal(3),
+            quantidade_atendida=Decimal(3),
+            status=StatusRequisicaoItemEnum.atendido,
+        )
+        db.add(item2)
+        db.flush()
+        ids.update(
+            {
+                "solicitante2_id": solicitante2.id,
+                "gestor_id": gestor.id,
+                "requisicao2_id": requisicao2.id,
+                "item2_id": item2.id,
+            }
+        )
+
+    def registrar(item_id, usuario_id, perfil, idempotency_key):
+        current_user["value"] = SimpleNamespace(id=usuario_id, perfil=perfil)
+        response = client.post(
+            "/devolucoes",
+            json={
+                "requisicao_item_id": item_id,
+                "qr_code": ids["qr_code"],
+                "peso_total_g": "10",
+            },
+            headers={"Idempotency-Key": idempotency_key},
+        )
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    pendente = registrar(
+        ids["item_id"], ids["admin_id"], PerfilEnum.admin, "read-test-pending"
+    )
+    aceita = registrar(
+        ids["item_id"], ids["solicitante_id"], PerfilEnum.solicitante,
+        "read-test-accepted",
+    )
+    rejeitada = registrar(
+        ids["item2_id"], ids["solicitante2_id"], PerfilEnum.solicitante,
+        "read-test-rejected",
+    )
+
+    current_user["value"] = SimpleNamespace(
+        id=ids["almoxarife_id"], perfil=PerfilEnum.almoxarife
+    )
+    response = client.patch(f"/devolucoes/{aceita['id']}/aceitar")
+    assert response.status_code == 200, response.text
+    response = client.patch(
+        f"/devolucoes/{rejeitada['id']}/rejeitar",
+        json={"motivo": "Material danificado"},
+    )
+    assert response.status_code == 200, response.text
+    return ids, pendente, aceita, rejeitada
+
+
 def test_atendimento_nao_pode_ser_iniciado_duas_vezes(inventory_api):
     client, factory, current_user = inventory_api
     ids = seed_inventory(factory)
@@ -347,6 +434,151 @@ def test_devolucao_pendente_so_credida_apos_aceite_idempotente(inventory_api):
         assert db.get(Estoque, ids["estoque_id"]).quantidade_atual == Decimal("12.000")
         assert db.query(MovimentacaoEstoque).count() == 1
         assert db.query(MovimentacaoEstoque).one().idempotency_key == f"devolucao:{created.json()['id']}"
+
+
+def test_leitura_devolucoes_respeita_dono_perfis_filtros_e_relacionamentos(inventory_api):
+    client, factory, current_user = inventory_api
+    ids, pendente, aceita, rejeitada = preparar_devolucoes_para_leitura(
+        client, factory, current_user
+    )
+
+    current_user["value"] = SimpleNamespace(
+        id=ids["solicitante_id"], perfil=PerfilEnum.solicitante
+    )
+    propria_lista = client.get(
+        "/devolucoes",
+        params={
+            "usuario_solicitante_id": ids["solicitante2_id"],
+            "usuario_operador_id": ids["solicitante2_id"],
+        },
+    )
+    assert propria_lista.status_code == 200, propria_lista.text
+    assert propria_lista.json()["total"] == 2
+    assert {item["id"] for item in propria_lista.json()["dados"]} == {
+        pendente["id"], aceita["id"]
+    }
+
+    detalhe = client.get(f"/devolucoes/{pendente['id']}")
+    assert detalhe.status_code == 200, detalhe.text
+    assert detalhe.json()["solicitante"]["id"] == ids["solicitante_id"]
+    assert detalhe.json()["operador"]["id"] == ids["admin_id"]
+    assert detalhe.json()["analista"] is None
+    assert detalhe.json()["analisada_at"] is None
+    assert detalhe.json()["item"]["material"]["codigo"] == "FX-001"
+    assert detalhe.json()["requisicao"]["setor"]["nome"] == "Produção"
+    assert "idempotency_key" not in detalhe.json()
+
+    current_user["value"] = SimpleNamespace(
+        id=ids["solicitante2_id"], perfil=PerfilEnum.solicitante
+    )
+    lista_solicitante2 = client.get(
+        "/devolucoes",
+        params={"usuario_solicitante_id": ids["solicitante_id"]},
+    )
+    assert lista_solicitante2.status_code == 200
+    assert [item["id"] for item in lista_solicitante2.json()["dados"]] == [
+        rejeitada["id"]
+    ]
+    assert client.get(f"/devolucoes/{pendente['id']}").status_code == 403
+
+    current_user["value"] = SimpleNamespace(
+        id=ids["admin_id"], perfil=PerfilEnum.admin
+    )
+    for perfil, usuario_id in (
+        (PerfilEnum.admin, ids["admin_id"]),
+        (PerfilEnum.almoxarife, ids["almoxarife_id"]),
+        (PerfilEnum.gestor, ids["gestor_id"]),
+    ):
+        current_user["value"] = SimpleNamespace(id=usuario_id, perfil=perfil)
+        response = client.get("/devolucoes")
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 3
+
+    current_user["value"] = SimpleNamespace(
+        id=ids["admin_id"], perfil=PerfilEnum.admin
+    )
+    assert client.get(
+        "/devolucoes", params={"usuario_solicitante_id": ids["solicitante_id"]}
+    ).json()["total"] == 2
+    assert client.get(
+        "/devolucoes", params={"usuario_operador_id": ids["admin_id"]}
+    ).json()["total"] == 1
+    assert client.get(
+        "/devolucoes",
+        params={
+            "usuario_solicitante_id": ids["solicitante_id"],
+            "usuario_operador_id": ids["admin_id"],
+        },
+    ).json()["total"] == 1
+    assert client.get(
+        "/devolucoes", params={"requisicao_id": ids["requisicao_id"]}
+    ).json()["total"] == 2
+    assert client.get(
+        "/devolucoes", params={"requisicao_item_id": ids["item_id"]}
+    ).json()["total"] == 2
+    for status_value in ("PENDENTE", "ACEITA", "REJEITADA"):
+        response = client.get("/devolucoes", params={"status": status_value})
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 1
+
+    assert client.get(
+        "/devolucoes",
+        params={
+            "data_de": pendente["created_at"][:10],
+            "data_ate": pendente["created_at"][:10],
+        },
+    ).json()["total"] == 3
+    primeira_pagina = client.get("/devolucoes", params={"page": 1, "limit": 2})
+    segunda_pagina = client.get("/devolucoes", params={"page": 2, "limit": 2})
+    assert primeira_pagina.json()["total"] == 3
+    assert primeira_pagina.json()["page"] == 1
+    assert len(primeira_pagina.json()["dados"]) == 2
+    assert segunda_pagina.json()["page"] == 2
+    assert len(segunda_pagina.json()["dados"]) == 1
+    assert not (
+        {row["id"] for row in primeira_pagina.json()["dados"]}
+        & {row["id"] for row in segunda_pagina.json()["dados"]}
+    )
+
+    for devolucao in (aceita, rejeitada):
+        detalhe_analisado = client.get(f"/devolucoes/{devolucao['id']}")
+        assert detalhe_analisado.status_code == 200
+        assert detalhe_analisado.json()["analista"]["id"] == ids["almoxarife_id"]
+        assert detalhe_analisado.json()["analisada_at"] is not None
+
+
+def test_leitura_devolucoes_validacao_autenticacao_e_nao_encontrada(inventory_api):
+    client, factory, current_user = inventory_api
+    ids, _, _, _ = preparar_devolucoes_para_leitura(client, factory, current_user)
+    current_user["value"] = SimpleNamespace(id=ids["admin_id"], perfil=PerfilEnum.admin)
+
+    invalid_filters = (
+        {"status": "INVALIDO"},
+        {"data_de": "ontem"},
+        {"data_de": "2026-10-02", "data_ate": "2026-10-01"},
+        {"requisicao_id": 0},
+        {"requisicao_item_id": -1},
+        {"usuario_solicitante_id": 0},
+        {"usuario_operador_id": -1},
+        {"page": 0},
+        {"limit": 101},
+    )
+    for params in invalid_filters:
+        response = client.get("/devolucoes", params=params)
+        assert response.status_code == 400, (params, response.text)
+        assert response.json()["detail"] == "Dados inválidos"
+        assert isinstance(response.json()["erros"], list)
+        assert response.json()["erros"]
+
+    assert client.get("/devolucoes/0").status_code == 400
+    assert client.get("/devolucoes/99999").status_code == 404
+
+    current_user_override = app.dependency_overrides.pop(get_current_user)
+    try:
+        assert client.get("/devolucoes").status_code == 401
+        assert client.get("/devolucoes/1").status_code == 401
+    finally:
+        app.dependency_overrides[get_current_user] = current_user_override
 
 
 def test_devolucao_rejeitada_nao_gera_credito(inventory_api):

@@ -139,11 +139,13 @@ A baixa bloqueia requisição, item e estoque com `FOR UPDATE`, escreve moviment
 | Método e caminho | Perfis | Body / filtros | Sucesso e erros principais |
 |---|---|---|---|
 | POST `/devolucoes` | SOLICITANTE dono, ADMIN | `requisicao_item_id`, `qr_code`, `peso_total_g`, `Idempotency-Key` | 201 pendente com quantidade calculada; 400 validação, 401, 403, 404 QR/item, 409 item não atendido, peso inválido ou saldo já reservado |
+| GET `/devolucoes` | SOLICITANTE, ALMOXARIFE, GESTOR, ADMIN | `page`, `limit` (padrão 20, máximo 100), `status`, `requisicao_id`, `requisicao_item_id`, `usuario_solicitante_id`, `usuario_operador_id`, `data_de`, `data_ate` | 200 `{dados,total,page,limit}`; 400 validação/filtros inválidos, 401, 403 |
 | GET `/devolucoes/pendentes` | ALMOXARIFE, ADMIN | `page`, `limit` | 200 fila paginada; 401, 403 |
+| GET `/devolucoes/{devolucao_id}` | SOLICITANTE, ALMOXARIFE, GESTOR, ADMIN | — | 200 detalhe; 400 ID inválido, 401, 403 solicitante alheio, 404 |
 | PATCH `/devolucoes/{devolucao_id}/aceitar` | ALMOXARIFE, ADMIN | — | 200 crédito em estoque e movimento `DEVOLUCAO`; 401, 403, 404, 409 já analisada/conflito |
 | PATCH `/devolucoes/{devolucao_id}/rejeitar` | ALMOXARIFE, ADMIN | `motivo` obrigatório | 200 rejeitada sem crédito; 400, 401, 403, 404, 409 já analisada |
 
-A quantidade é calculada por `peso_total_g / peso_unitario_g`, arredondada a três casas. Devoluções pendentes reservam parte da quantidade atendida para impedir devolução excedente; apenas o aceite, em transação idempotente, credita o estoque.
+A quantidade é calculada por `peso_total_g / peso_unitario_g`, arredondada a três casas. Devoluções pendentes reservam parte da quantidade atendida para impedir devolução excedente; apenas o aceite, em transação idempotente, credita o estoque. A visibilidade de SOLICITANTE é determinada pelo solicitante da requisição associada ao item, nunca por `usuario_operador_id`; filtros de solicitante e operador enviados por esse perfil são ignorados.
 
 ## Auditoria CRUD das rotas
 
@@ -162,13 +164,13 @@ Inventário conferido pelos decorators em `routes/*.py` e pelos routers registra
 | Requisições | GET coleção e detalhe; POST; PUT | DELETE `/requisicoes/{requisicao_id}` | Cancelamento existe via PATCH `/requisicoes/{requisicao_id}/cancelar`; não há exclusão da requisição. |
 | Itens de requisição | GET da coleção de itens; POST; PUT; DELETE | GET individual `/requisicoes/{requisicao_id}/itens/{item_id}` | O GET existente lista os itens do pedido; DELETE cancela logicamente o item e tem restrições de estado. |
 | Atendimentos | GET coleção, detalhe e ativo; POST `/atendimentos/iniciar` | PUT e DELETE não existem | Fluxo de turno; alteração de estado é PATCH `/atendimentos/{atendimento_id}/encerrar`. Não é um cadastro CRUD genérico. |
-| Devoluções | POST; GET apenas da fila pendente | GET `/devolucoes`; GET `/devolucoes/{devolucao_id}`; PUT e DELETE | Análise é feita por PATCH `/devolucoes/{devolucao_id}/aceitar` ou `/devolucoes/{devolucao_id}/rejeitar`; crédito exige aceite. Não há edição/exclusão após registro. |
+| Devoluções | GET coleção, fila pendente e detalhe; POST | PUT e DELETE não se aplicam ao fluxo | SOLICITANTE só consulta devoluções das próprias requisições; a análise ocorre por PATCH aceitar/rejeitar e o crédito exige aceite. Não há edição/exclusão após registro. |
 | Movimentações | GET coleção e detalhe; POST | PUT e DELETE | Não implementados intencionalmente: histórico de auditoria deve permanecer imutável. |
 | Dashboard e health | GET | POST, PUT e DELETE não se aplicam | Endpoints de consulta/saúde, não recursos CRUD. |
 | Projects (demo) | GET coleção e detalhe; POST; PUT; DELETE | Nenhuma | CRUD completo em memória; recurso demonstrativo. |
 | Orders (demo) | GET coleção e detalhe; POST | PUT `/orders/{order_id}` e DELETE `/orders/{order_id}` | CRUD incompleto; recurso demonstrativo mantido em memória. |
 
-**Lacunas funcionais identificadas:** adicionar GET de detalhe de item de requisição se o cliente precisar consultar um item isoladamente; adicionar GET geral/de detalhe para devoluções se for necessário consultar o histórico fora da fila pendente; completar PUT e DELETE de `orders` somente se esse recurso demonstrativo for mantido. A falta de PUT/DELETE em atendimentos e movimentações é coerente com seus fluxos e não foi classificada como falha de CRUD.
+**Lacunas funcionais identificadas:** adicionar GET de detalhe de item de requisição se o cliente precisar consultar um item isoladamente; completar PUT e DELETE de `orders` somente se esse recurso demonstrativo for mantido. A falta de PUT/DELETE em atendimentos e movimentações é coerente com seus fluxos e não foi classificada como falha de CRUD.
 
 ## Rotas auxiliares existentes
 

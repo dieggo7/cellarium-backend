@@ -1,12 +1,14 @@
 # ruff: noqa: B008
 
+from datetime import date, datetime, time
 from decimal import ROUND_HALF_UP, Decimal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from core.estoque import buscar_estoque_para_update
 from core.security import exigir_perfil
@@ -16,6 +18,7 @@ from models.material import Material
 from models.movimentacao_estoque import MovimentacaoEstoque, TipoMovimentacaoEnum
 from models.requisicao import Requisicao, StatusRequisicaoEnum
 from models.requisicao_item import RequisicaoItem, StatusRequisicaoItemEnum
+from models.setor import Setor
 from models.usuario import PerfilEnum, Usuario
 
 router = APIRouter(prefix="/devolucoes", tags=["devoluções"])
@@ -62,6 +65,170 @@ def _devolucao_dict(devolucao: Devolucao) -> dict:
         "observacao_analise": devolucao.observacao_analise,
         "created_at": devolucao.created_at,
         "analisada_at": devolucao.analisada_at,
+    }
+
+
+def _consulta_devolucoes():
+    solicitante = aliased(Usuario)
+    operador = aliased(Usuario)
+    analista = aliased(Usuario)
+    return (
+        select(
+            Devolucao.id.label("devolucao_id"),
+            Devolucao.requisicao_item_id.label("requisicao_item_id"),
+            Devolucao.status.label("status"),
+            Devolucao.peso_total_g.label("peso_total_g"),
+            Devolucao.peso_unitario_g.label("peso_unitario_g"),
+            Devolucao.quantidade_calculada.label("quantidade_calculada"),
+            Devolucao.observacao.label("observacao"),
+            Devolucao.observacao_analise.label("observacao_analise"),
+            Devolucao.created_at.label("created_at"),
+            Devolucao.analisada_at.label("analisada_at"),
+            RequisicaoItem.id.label("item_id"),
+            RequisicaoItem.quantidade_solicitada.label("quantidade_solicitada"),
+            RequisicaoItem.quantidade_atendida.label("quantidade_atendida"),
+            RequisicaoItem.status.label("item_status"),
+            Requisicao.id.label("requisicao_id"),
+            Requisicao.numero.label("requisicao_numero"),
+            Requisicao.setor_id.label("setor_id"),
+            Requisicao.usuario_solicitante_id.label("usuario_solicitante_id"),
+            Setor.nome.label("setor_nome"),
+            Material.id.label("material_id"),
+            Material.codigo.label("material_codigo"),
+            Material.descricao.label("material_descricao"),
+            solicitante.id.label("solicitante_id"),
+            solicitante.nome.label("solicitante_nome"),
+            operador.id.label("operador_id"),
+            operador.nome.label("operador_nome"),
+            analista.id.label("analista_id"),
+            analista.nome.label("analista_nome"),
+        )
+        .select_from(Devolucao)
+        .join(RequisicaoItem, RequisicaoItem.id == Devolucao.requisicao_item_id)
+        .join(Requisicao, Requisicao.id == RequisicaoItem.requisicao_id)
+        .join(Setor, Setor.id == Requisicao.setor_id)
+        .join(Material, Material.id == RequisicaoItem.material_id)
+        .join(solicitante, solicitante.id == Requisicao.usuario_solicitante_id)
+        .join(operador, operador.id == Devolucao.usuario_operador_id)
+        .outerjoin(analista, analista.id == Devolucao.usuario_analise_id)
+    )
+
+
+def _devolucao_completa(row) -> dict:
+    analista = None
+    if row["analista_id"] is not None:
+        analista = {"id": row["analista_id"], "nome": row["analista_nome"]}
+    return {
+        "id": row["devolucao_id"],
+        "requisicao_item_id": row["requisicao_item_id"],
+        "status": row["status"],
+        "peso_total_g": row["peso_total_g"],
+        "peso_unitario_g": row["peso_unitario_g"],
+        "quantidade_calculada": row["quantidade_calculada"],
+        "observacao": row["observacao"],
+        "observacao_analise": row["observacao_analise"],
+        "created_at": row["created_at"],
+        "analisada_at": row["analisada_at"],
+        "item": {
+            "id": row["item_id"],
+            "quantidade_solicitada": row["quantidade_solicitada"],
+            "quantidade_atendida": row["quantidade_atendida"],
+            "status": row["item_status"],
+            "material": {
+                "id": row["material_id"],
+                "codigo": row["material_codigo"],
+                "descricao": row["material_descricao"],
+            },
+        },
+        "requisicao": {
+            "id": row["requisicao_id"],
+            "numero": row["requisicao_numero"],
+            "setor_id": row["setor_id"],
+            "usuario_solicitante_id": row["usuario_solicitante_id"],
+            "setor": {"id": row["setor_id"], "nome": row["setor_nome"]},
+        },
+        "solicitante": {
+            "id": row["solicitante_id"],
+            "nome": row["solicitante_nome"],
+        },
+        "operador": {"id": row["operador_id"], "nome": row["operador_nome"]},
+        "analista": analista,
+    }
+
+
+@router.get("")
+def listar_devolucoes(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    status_filtro: StatusDevolucaoEnum | None = Query(default=None, alias="status"),
+    requisicao_id: int | None = Query(default=None, gt=0),
+    requisicao_item_id: int | None = Query(default=None, gt=0),
+    usuario_solicitante_id: int | None = Query(default=None, gt=0),
+    usuario_operador_id: int | None = Query(default=None, gt=0),
+    data_de: date | None = None,
+    data_ate: date | None = None,
+    db: Session = Depends(get_db),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(
+            PerfilEnum.solicitante,
+            PerfilEnum.almoxarife,
+            PerfilEnum.gestor,
+            PerfilEnum.admin,
+        )
+    ),
+):
+    if data_de is not None and data_ate is not None and data_de > data_ate:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "detail": "Dados inválidos",
+                "erros": [
+                    {
+                        "campo": "data_de",
+                        "mensagem": "data_de não pode ser posterior a data_ate",
+                    }
+                ],
+            },
+        )
+
+    query = _consulta_devolucoes()
+    if status_filtro is not None:
+        query = query.where(Devolucao.status == status_filtro)
+    if requisicao_id is not None:
+        query = query.where(Requisicao.id == requisicao_id)
+    if requisicao_item_id is not None:
+        query = query.where(RequisicaoItem.id == requisicao_item_id)
+    if usuario_atual.perfil == PerfilEnum.solicitante:
+        query = query.where(Requisicao.usuario_solicitante_id == usuario_atual.id)
+    else:
+        if usuario_solicitante_id is not None:
+            query = query.where(
+                Requisicao.usuario_solicitante_id == usuario_solicitante_id
+            )
+        if usuario_operador_id is not None:
+            query = query.where(Devolucao.usuario_operador_id == usuario_operador_id)
+    if data_de is not None:
+        query = query.where(
+            Devolucao.created_at >= datetime.combine(data_de, time.min)
+        )
+    if data_ate is not None:
+        query = query.where(
+            Devolucao.created_at <= datetime.combine(data_ate, time.max)
+        )
+
+    total = db.scalar(
+        query.with_only_columns(func.count(Devolucao.id)).order_by(None)
+    ) or 0
+    rows = db.execute(
+        query.order_by(Devolucao.created_at.desc(), Devolucao.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    ).mappings().all()
+    return {
+        "dados": [_devolucao_completa(row) for row in rows],
+        "total": total,
+        "page": page,
+        "limit": limit,
     }
 
 
@@ -243,6 +410,35 @@ def listar_devolucoes_pendentes(
         "page": page,
         "limit": limit,
     }
+
+
+@router.get("/{devolucao_id}")
+def obter_devolucao(
+    devolucao_id: int = Path(gt=0),
+    db: Session = Depends(get_db),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(
+            PerfilEnum.solicitante,
+            PerfilEnum.almoxarife,
+            PerfilEnum.gestor,
+            PerfilEnum.admin,
+        )
+    ),
+):
+    row = db.execute(
+        _consulta_devolucoes().where(Devolucao.id == devolucao_id)
+    ).mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Devolução não encontrada")
+    if (
+        usuario_atual.perfil == PerfilEnum.solicitante
+        and row["usuario_solicitante_id"] != usuario_atual.id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Você só pode consultar devoluções das suas requisições",
+        )
+    return _devolucao_completa(row)
 
 
 @router.patch("/{devolucao_id}/aceitar")
