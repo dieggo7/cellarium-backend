@@ -13,6 +13,10 @@ from sqlalchemy.orm import Session
 from core.estoque import buscar_estoque_para_update
 from core.security import exigir_perfil, get_current_user
 from database.session import get_db
+from models.atendimento_almoxarifado import (
+    AtendimentoAlmoxarifado,
+    StatusAtendimentoEnum,
+)
 from models.estoque import Estoque
 from models.material import Material
 from models.movimentacao_estoque import MovimentacaoEstoque, TipoMovimentacaoEnum
@@ -41,6 +45,162 @@ class SepararRequest(BaseModel):
     quantidade: Decimal | None = Field(
         default=None, gt=0, max_digits=12, decimal_places=3
     )
+
+
+@router.patch("/{requisicao_id}/separar")
+def separar_requisicao(
+    requisicao_id: int,
+    idempotency_key: str = Header(
+        alias="Idempotency-Key", min_length=1, max_length=100
+    ),
+    db: Session = Depends(get_db),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)
+    ),
+):
+    """Debita todos os itens de uma requisição em uma única transação."""
+    usuario_id = usuario_atual.id
+    perfil = usuario_atual.perfil
+    db.rollback()
+    try:
+        with db.begin():
+            requisicao = db.scalar(
+                select(Requisicao)
+                .where(Requisicao.id == requisicao_id)
+                .with_for_update()
+            )
+            if requisicao is None:
+                raise HTTPException(status_code=404, detail="Requisição não encontrada")
+            if requisicao.status != StatusRequisicaoEnum.em_separacao:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A requisição precisa estar EM_SEPARACAO",
+                )
+            if perfil == PerfilEnum.almoxarife:
+                atendimento = db.scalar(
+                    select(AtendimentoAlmoxarifado)
+                    .where(
+                        AtendimentoAlmoxarifado.usuario_id == usuario_id,
+                        AtendimentoAlmoxarifado.setor_id == requisicao.setor_id,
+                        AtendimentoAlmoxarifado.status == StatusAtendimentoEnum.aberto,
+                    )
+                    .with_for_update()
+                )
+                if atendimento is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Inicie um atendimento para o setor da requisição",
+                    )
+
+            itens = db.scalars(
+                select(RequisicaoItem)
+                .where(RequisicaoItem.requisicao_id == requisicao_id)
+                .order_by(RequisicaoItem.material_id)
+                .with_for_update()
+            ).all()
+            itens_pendentes = [
+                item
+                for item in itens
+                if item.status == StatusRequisicaoItemEnum.pendente
+            ]
+            if not itens_pendentes:
+                raise HTTPException(
+                    status_code=409, detail="Não há itens pendentes para separar"
+                )
+
+            for item in itens_pendentes:
+                quantidade = item.quantidade_solicitada - item.quantidade_separada
+                if quantidade <= 0:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Quantidade pendente inválida para o item {item.id}",
+                    )
+                estoque = buscar_estoque_para_update(item.material_id, db)
+                if estoque is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Não existe registro de estoque para o material {item.material_id}",
+                    )
+                anterior = estoque.quantidade_atual
+                if anterior < quantidade:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "mensagem": "Estoque insuficiente para realizar a separação",
+                            "material_id": item.material_id,
+                            "estoque_atual": str(anterior),
+                            "quantidade_pedida": str(quantidade),
+                        },
+                    )
+                posterior = anterior - quantidade
+                resultado = cast(
+                    CursorResult[Any],
+                    db.execute(
+                        update(Estoque)
+                        .where(
+                            Estoque.id == estoque.id,
+                            Estoque.quantidade_atual == anterior,
+                            Estoque.quantidade_atual >= quantidade,
+                        )
+                        .values(
+                            quantidade_atual=posterior,
+                            data_ultima_movimentacao=func.now(),
+                        )
+                        .execution_options(synchronize_session=False)
+                    ),
+                )
+                if resultado.rowcount != 1:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="O saldo mudou durante a separação; recarregue e tente novamente",
+                    )
+                item.quantidade_separada += quantidade
+                item.status = StatusRequisicaoItemEnum.separado
+                db.add(
+                    MovimentacaoEstoque(
+                        material_id=item.material_id,
+                        usuario_id=usuario_id,
+                        requisicao_id=requisicao_id,
+                        idempotency_key=f"{idempotency_key}:{item.id}",
+                        tipo=TipoMovimentacaoEnum.saida,
+                        quantidade=quantidade,
+                        estoque_anterior=anterior,
+                        estoque_posterior=posterior,
+                        observacao=item.observacao,
+                    )
+                )
+
+            requisicao.usuario_separador_id = usuario_id
+            requisicao.status = StatusRequisicaoEnum.separada
+            db.flush()
+        return {
+            "requisicao_id": requisicao_id,
+            "status": requisicao.status,
+            "itens": [
+                {
+                    "id": item.id,
+                    "material_id": item.material_id,
+                    "quantidade_separada": item.quantidade_separada,
+                    "status": item.status,
+                }
+                for item in itens
+            ],
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Esta tentativa de separação já foi processada",
+        ) from exc
+    except OperationalError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Conflito concorrente na separação; tente novamente",
+        ) from exc
 
 
 def _requisicao_para_edicao(

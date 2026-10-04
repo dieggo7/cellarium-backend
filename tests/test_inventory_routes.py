@@ -333,6 +333,81 @@ def test_estoque_insuficiente_faz_rollback_completo(inventory_api):
         assert db.query(MovimentacaoEstoque).count() == 0
 
 
+def test_separacao_em_lote_debita_todos_os_itens(inventory_api):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    current_user["value"] = SimpleNamespace(
+        id=ids["almoxarife_id"], perfil=PerfilEnum.almoxarife
+    )
+    client.post("/atendimentos/iniciar", json={"setor_id": ids["setor_id"]})
+    response = client.patch(
+        f"/requisicoes/{ids['requisicao_id']}/separar",
+        headers={"Idempotency-Key": "bulk-separation-success"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "SEPARADA"
+    with factory() as db:
+        assert db.get(Estoque, ids["estoque_id"]).quantidade_atual == Decimal("5.000")
+        assert db.get(RequisicaoItem, ids["item_id"]).quantidade_separada == Decimal("5.000")
+        movement = db.query(MovimentacaoEstoque).one()
+        assert movement.idempotency_key == f"bulk-separation-success:{ids['item_id']}"
+
+
+def test_separacao_em_lote_reverte_todos_debitos_se_um_item_nao_tem_saldo(
+    inventory_api,
+):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    with factory.begin() as db:
+        categoria = db.query(Categoria).one()
+        unidade = db.query(UnidadeMedida).one()
+        second_material = Material(
+            codigo="FX-002",
+            descricao="Arruela",
+            categoria_id=categoria.id,
+            unidade_medida_id=unidade.id,
+            ativo=True,
+        )
+        db.add(second_material)
+        db.flush()
+        second_stock = Estoque(
+            material_id=second_material.id,
+            quantidade_atual=Decimal(1),
+            estoque_minimo=Decimal(0),
+        )
+        second_item = RequisicaoItem(
+            requisicao_id=ids["requisicao_id"],
+            material_id=second_material.id,
+            quantidade_solicitada=Decimal(2),
+            quantidade_separada=Decimal(0),
+            quantidade_atendida=Decimal(0),
+            status=StatusRequisicaoItemEnum.pendente,
+        )
+        db.add_all([second_stock, second_item])
+        db.flush()
+        second_stock_id = second_stock.id
+        second_item_id = second_item.id
+
+    current_user["value"] = SimpleNamespace(
+        id=ids["almoxarife_id"], perfil=PerfilEnum.almoxarife
+    )
+    client.post("/atendimentos/iniciar", json={"setor_id": ids["setor_id"]})
+    response = client.patch(
+        f"/requisicoes/{ids['requisicao_id']}/separar",
+        headers={"Idempotency-Key": "bulk-separation-rollback"},
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["mensagem"] == "Estoque insuficiente para realizar a separação"
+    with factory() as db:
+        assert db.get(Estoque, ids["estoque_id"]).quantidade_atual == Decimal("10.000")
+        assert db.get(Estoque, second_stock_id).quantidade_atual == Decimal("1.000")
+        assert db.get(RequisicaoItem, ids["item_id"]).quantidade_separada == Decimal("0.000")
+        assert db.get(RequisicaoItem, second_item_id).quantidade_separada == Decimal("0.000")
+        assert db.query(MovimentacaoEstoque).count() == 0
+
+
 def test_concluir_requisicao_parcial_preserva_divergencia(inventory_api):
     client, factory, current_user = inventory_api
     ids = seed_inventory(factory)
