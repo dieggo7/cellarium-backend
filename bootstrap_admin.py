@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from core.security import get_password_hash
 from database.session import SessionLocal
+from models.setor import Setor  # noqa: F401 — registra a tabela referenciada por Usuario.
 from models.usuario import PerfilEnum, Usuario
 
 
@@ -78,8 +79,14 @@ def main() -> int:
             )
         print(f"Conta ADMIN '{login}' criada.")
         return 0
-    except SQLAlchemyError:
-        print("Não foi possível preparar a conta ADMIN; confira o banco e DATABASE_URL.")
+    except SQLAlchemyError as exc:
+        # Do not print the full SQLAlchemy exception because it can contain
+        # the connection URL. DBAPI args are enough to identify common DB errors.
+        original = getattr(exc, "orig", None)
+        detail = getattr(original, "args", ())
+        error_type = type(original).__name__ if original else type(exc).__name__
+        print("Não foi possível preparar a conta ADMIN.")
+        print(f"Erro do banco: {error_type}: {detail}")
         return 1
 
 
