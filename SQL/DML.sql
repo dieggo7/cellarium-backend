@@ -1,4 +1,3 @@
-
 USE til_marcon_almoxarifado;
 
 -- =====================================================================
@@ -23,8 +22,8 @@ INSERT INTO unidades_medida (nome) VALUES
 
 -- =====================================================================
 -- 15. DADOS DE EXEMPLO — SETORES
--- Preparado para cadastro futuro; NÃO representa necessariamente os
--- setores oficiais da Til Marcon (conforme instruído no prompt).
+-- Preparado para cadastro futuro; não representa necessariamente os
+-- setores oficiais da Til Marcon.
 -- =====================================================================
 INSERT INTO setores (nome, codigo) VALUES
 ('Produção',   'PROD'),
@@ -42,23 +41,10 @@ INSERT INTO localizacoes (codigo, descricao, corredor, estante, prateleira, posi
 ('B2-E1-P3', 'Corredor B, estante 1, prateleira 3', 'B2', 'E1', 'P3', '01');
 
 -- =====================================================================
--- 17. DADOS DE EXEMPLO — USUÁRIOS
--- Os valores de senha_hash abaixo são PLACEHOLDERS ilustrativos.
--- Em produção, a aplicação deve gerar hashes reais (bcrypt/argon2).
--- =====================================================================
-INSERT INTO usuarios (nome, login, senha_hash, perfil, setor_id) VALUES
-('Administrador do Sistema', 'admin',        'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_1', 'ADMIN',       NULL),
-('Gestor do Almoxarifado',   'gestor.almox', 'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_2', 'GESTOR',      NULL),
-('Almoxarife Turno 1',       'almoxarife1',  'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_3', 'ALMOXARIFE',  NULL),
-('Almoxarife Turno 2',       'almoxarife2',  'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_4', 'ALMOXARIFE',  NULL),
-('Solicitante Produção',     'solic.prod',   'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_5', 'SOLICITANTE', (SELECT id FROM setores WHERE codigo='PROD')),
-('Solicitante Solda',        'solic.solda',  'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_6', 'SOLICITANTE', (SELECT id FROM setores WHERE codigo='SOLDA'));
-
--- =====================================================================
--- 18. DADOS DOS MATERIAIS
+-- 17. DADOS DOS MATERIAIS
 -- Código, descrição e prefixo de categoria preservados exatamente como
 -- fornecidos no arquivo de origem. Unidade e especificação inferidas
--- tecnicamente (ver observação no topo do script).
+-- tecnicamente.
 -- =====================================================================
 
 -- ---- MP — Matérias-primas, metais e perfis ----
@@ -206,7 +192,7 @@ INSERT INTO materiais (codigo, descricao, categoria_id, unidade_medida_id, espec
     'Medição manual, trava automática, 5 metros', UUID());
 
 -- =====================================================================
--- 19. ESTOQUE — um registro por material (níveis ilustrativos de
+-- 18. ESTOQUE — um registro por material (níveis ilustrativos de
 -- exemplo; devem ser substituídos pela contagem real do almoxarifado)
 -- =====================================================================
 INSERT INTO estoque (material_id, quantidade_atual, estoque_minimo, estoque_maximo, localizacao_id)
@@ -217,19 +203,5 @@ SELECT m.id,
        10, 200,
        (SELECT id FROM localizacoes ORDER BY id LIMIT 1)
 FROM materiais m;
-
--- =====================================================================
--- 20. DADOS DE EXEMPLO — REQUISIÇÃO DEMONSTRATIVA
--- (dados fictícios apenas para validar views, procedure e consultas)
--- =====================================================================
-INSERT INTO requisicoes (numero, setor_id, usuario_solicitante_id, status) VALUES
-('REQ-2026-000001', (SELECT id FROM setores WHERE codigo='SOLDA'),
-    (SELECT id FROM usuarios WHERE login='solic.solda'), 'PENDENTE');
-
-INSERT INTO requisicao_itens (requisicao_id, material_id, quantidade_solicitada) VALUES
-((SELECT id FROM requisicoes WHERE numero='REQ-2026-000001'),
-    (SELECT id FROM materiais WHERE codigo='CS-001'), 5),
-((SELECT id FROM requisicoes WHERE numero='REQ-2026-000001'),
-    (SELECT id FROM materiais WHERE codigo='EP-008'), 2);
 
 -- =====================================================================
