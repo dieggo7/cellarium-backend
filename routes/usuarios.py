@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from core.security import exigir_perfil, get_current_user
+from core.security import exigir_perfil
 from database.session import get_db
 from models.usuario import PerfilEnum, Usuario
 
@@ -89,9 +89,7 @@ def list_usuarios(
     limit: int = Query(default=10, ge=1, le=100),
     apenas_ativos: bool = True,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(
-        get_current_user
-    ),  # exige estar logado, qualquer perfil
+    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin)),
 ):
     query = select(Usuario)
     if apenas_ativos:
@@ -105,7 +103,7 @@ def list_usuarios(
 def get_usuario(
     usuario_id: int,
     db: Session = Depends(get_db),
-    usuario_atual: Usuario = Depends(get_current_user),
+    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.admin)),
 ):
     usuario = db.get(Usuario, usuario_id)
     if not usuario:
