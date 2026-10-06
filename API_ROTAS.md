@@ -20,8 +20,8 @@ Logout é stateless: não existe blacklist nem refresh token persistido. Refresh
 
 | Método e caminho | Perfis | Body / filtros | Sucesso e erros principais |
 |---|---|---|---|
-| GET `/usuarios` | Autenticado | `page`, `limit`, `apenas_ativos` (padrão `true`) | 200 lista sem `senha_hash`; 400, 401 |
-| GET `/usuarios/{usuario_id}` | Autenticado | — | 200 usuário sem hash; 400, 401, 404 |
+| GET `/usuarios` | ADMIN | `page`, `limit`, `apenas_ativos` (padrão `true`) | 200 lista sem `senha_hash`; 400, 401, 403 |
+| GET `/usuarios/{usuario_id}` | ADMIN | — | 200 usuário sem hash; 400, 401, 403, 404 |
 | POST `/usuarios` | ADMIN | `nome`, `login`, `senha` (mín. 6), `perfil`, `setor_id?` | 201 usuário sem hash; 400, 401, 403, 404 setor inválido, 409 login duplicado |
 | PUT `/usuarios/{usuario_id}` | ADMIN | `nome?`, `login?`, `perfil?`, `setor_id?`, `ativo?`, `senha?` | 200 usuário sem hash; 400, 401, 403, 404, 409 login duplicado ou tentativa de auto-rebaixamento/desativação |
 | DELETE `/usuarios/{usuario_id}` | ADMIN | — | 200 usuário desativado logicamente; 401, 403, 404, 409 auto-desativação |
