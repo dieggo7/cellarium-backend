@@ -41,7 +41,24 @@ INSERT INTO localizacoes (codigo, descricao, corredor, estante, prateleira, posi
 ('B2-E1-P3', 'Corredor B, estante 1, prateleira 3', 'B2', 'E1', 'P3', '01');
 
 -- =====================================================================
--- 17. DADOS DOS MATERIAIS
+-- 17. DADOS DE EXEMPLO — LOCALIZAÇÕES ADICIONAIS
+-- =====================================================================
+INSERT INTO localizacoes (codigo, descricao, corredor, estante, prateleira, posicao) VALUES
+('A1-E1-P2', 'Corredor A, estante 1, prateleira 2', 'A1', 'E1', 'P2', '01'),
+('A1-E2-P2', 'Corredor A, estante 2, prateleira 2', 'A1', 'E2', 'P2', '01'),
+('A2-E1-P1', 'Corredor A, estante 1, prateleira 1', 'A2', 'E1', 'P1', '01'),
+('A2-E2-P1', 'Corredor A, estante 2, prateleira 1', 'A2', 'E2', 'P1', '01'),
+('B1-E1-P1', 'Corredor B, estante 1, prateleira 1', 'B1', 'E1', 'P1', '01'),
+('B1-E2-P1', 'Corredor B, estante 2, prateleira 1', 'B1', 'E2', 'P1', '01'),
+('B2-E1-P1', 'Corredor B, estante 1, prateleira 1', 'B2', 'E1', 'P1', '01'),
+('B2-E2-P3', 'Corredor B, estante 2, prateleira 3', 'B2', 'E2', 'P3', '01'),
+('C1-E1-P1', 'Corredor C, estante 1, prateleira 1', 'C1', 'E1', 'P1', '01'),
+('C1-E2-P2', 'Corredor C, estante 2, prateleira 2', 'C1', 'E2', 'P2', '01'),
+('C2-E1-P3', 'Corredor C, estante 1, prateleira 3', 'C2', 'E1', 'P3', '01'),
+('D1-E1-P1', 'Corredor D, estante 1, prateleira 1', 'D1', 'E1', 'P1', '01');
+
+-- =====================================================================
+-- 18. DADOS DOS MATERIAIS
 -- Código, descrição e prefixo de categoria preservados exatamente como
 -- fornecidos no arquivo de origem. Unidade e especificação inferidas
 -- tecnicamente.
@@ -192,7 +209,7 @@ INSERT INTO materiais (codigo, descricao, categoria_id, unidade_medida_id, espec
     'Medição manual, trava automática, 5 metros', UUID());
 
 -- =====================================================================
--- 18. ESTOQUE — um registro por material (níveis ilustrativos de
+-- 19. ESTOQUE — um registro por material (níveis ilustrativos de
 -- exemplo; devem ser substituídos pela contagem real do almoxarifado)
 -- =====================================================================
 INSERT INTO estoque (material_id, quantidade_atual, estoque_minimo, estoque_maximo, localizacao_id)
