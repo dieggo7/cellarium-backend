@@ -19,7 +19,7 @@ INSERT INTO categorias (nome, codigo_prefixo, descricao) VALUES
 INSERT INTO unidades_medida (nome) VALUES
 ('Unidade'), ('Chapa'), ('Barra'), ('Pedaço'), ('Rolo'), ('Caixa'),
 ('Kg'), ('M³'), ('Galão'), ('Frasco'), ('Lata'), ('Tubo'),
-('Bombona'), ('Par'), ('Jogo'), ('Pacote'), ('Bisnaga');
+('Bombona'), ('Par'), ('Jogo'), ('Pacote'), ('Bisnaga'), ('Metro');
 
 -- =====================================================================
 -- 15. DADOS DE EXEMPLO — SETORES
@@ -40,19 +40,20 @@ INSERT INTO localizacoes (codigo, descricao, corredor, estante, prateleira, posi
 ('A1-E1-P1', 'Corredor A, estante 1, prateleira 1', 'A1', 'E1', 'P1', '01'),
 ('A1-E2-P1', 'Corredor A, estante 2, prateleira 1', 'A1', 'E2', 'P1', '01'),
 ('B2-E1-P3', 'Corredor B, estante 1, prateleira 3', 'B2', 'E1', 'P3', '01');
-
--- =====================================================================
--- 17. DADOS DE EXEMPLO — USUÁRIOS
--- Os valores de senha_hash abaixo são PLACEHOLDERS ilustrativos.
--- Em produção, a aplicação deve gerar hashes reais (bcrypt/argon2).
--- =====================================================================
-INSERT INTO usuarios (nome, login, senha_hash, perfil, setor_id) VALUES
-('Administrador do Sistema', 'admin',        'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_1', 'ADMIN',       NULL),
-('Gestor do Almoxarifado',   'gestor.almox', 'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_2', 'GESTOR',      NULL),
-('Almoxarife Turno 1',       'almoxarife1',  'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_3', 'ALMOXARIFE',  NULL),
-('Almoxarife Turno 2',       'almoxarife2',  'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_4', 'ALMOXARIFE',  NULL),
-('Solicitante Produção',     'solic.prod',   'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_5', 'SOLICITANTE', (SELECT id FROM setores WHERE codigo='PROD')),
-('Solicitante Solda',        'solic.solda',  'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_6', 'SOLICITANTE', (SELECT id FROM setores WHERE codigo='SOLDA'));
+-- Endereços adicionais para distribuir o catálogo no almoxarifado de demonstração.
+INSERT INTO localizacoes (codigo, descricao, corredor, estante, prateleira, posicao) VALUES
+('A1-E1-P2','Corredor A, estante 1, prateleira 2','A1','E1','P2','01'),
+('A1-E2-P2','Corredor A, estante 2, prateleira 2','A1','E2','P2','01'),
+('A2-E1-P1','Corredor A, estante 1, prateleira 1','A2','E1','P1','01'),
+('A2-E2-P1','Corredor A, estante 2, prateleira 1','A2','E2','P1','01'),
+('B1-E1-P1','Corredor B, estante 1, prateleira 1','B1','E1','P1','01'),
+('B1-E2-P1','Corredor B, estante 2, prateleira 1','B1','E2','P1','01'),
+('B2-E1-P1','Corredor B, estante 1, prateleira 1','B2','E1','P1','01'),
+('B2-E2-P3','Corredor B, estante 2, prateleira 3','B2','E2','P3','01'),
+('C1-E1-P1','Corredor C, estante 1, prateleira 1','C1','E1','P1','01'),
+('C1-E2-P2','Corredor C, estante 2, prateleira 2','C1','E2','P2','01'),
+('C2-E1-P3','Corredor C, estante 1, prateleira 3','C2','E1','P3','01'),
+('D1-E1-P1','Corredor D, estante 1, prateleira 1','D1','E1','P1','01');
 
 -- =====================================================================
 -- 18. DADOS DOS MATERIAIS
@@ -205,6 +206,66 @@ INSERT INTO materiais (codigo, descricao, categoria_id, unidade_medida_id, espec
     (SELECT id FROM categorias WHERE codigo_prefixo='UT'), (SELECT id FROM unidades_medida WHERE nome='Unidade'),
     'Medição manual, trava automática, 5 metros', UUID());
 
+-- Catálogo ampliado de materiais para dados de demonstração.
+-- Todos os registros são fictícios; ajuste saldos e especificações à operação real.
+INSERT INTO materiais (codigo, descricao, categoria_id, unidade_medida_id, especificacao, qr_code) VALUES
+('MP-006','Cantoneira de aço carbono 1.1/2 x 1/8 pol.',(SELECT id FROM categorias WHERE codigo_prefixo='MP'),(SELECT id FROM unidades_medida WHERE nome='Barra'),'Perfil laminado para estruturas leves',UUID()),
+('MP-008','Tubo de aço carbono redondo 1 pol. schedule 40',(SELECT id FROM categorias WHERE codigo_prefixo='MP'),(SELECT id FROM unidades_medida WHERE nome='Barra'),'Diâmetro nominal 1 pol.',UUID()),
+('MP-009','Tubo de aço carbono quadrado 30 x 30 x 1,5 mm',(SELECT id FROM categorias WHERE codigo_prefixo='MP'),(SELECT id FROM unidades_medida WHERE nome='Barra'),'Seção quadrada, parede 1,5 mm',UUID()),
+('MP-010','Barra chata de aço carbono 1 x 3/16 pol.',(SELECT id FROM categorias WHERE codigo_prefixo='MP'),(SELECT id FROM unidades_medida WHERE nome='Barra'),'Aço carbono para fabricação geral',UUID()),
+('MP-011','Chapa galvanizada 1,5 mm',(SELECT id FROM categorias WHERE codigo_prefixo='MP'),(SELECT id FROM unidades_medida WHERE nome='Chapa'),'Aço galvanizado para proteção e fechamento',UUID()),
+('MP-014','Barra redonda de aço SAE 1020 3/4 pol.',(SELECT id FROM categorias WHERE codigo_prefixo='MP'),(SELECT id FROM unidades_medida WHERE nome='Barra'),'Diâmetro 3/4 pol.',UUID()),
+('MP-015','Chapa de aço carbono SAE 1020 3/16 pol.',(SELECT id FROM categorias WHERE codigo_prefixo='MP'),(SELECT id FROM unidades_medida WHERE nome='Chapa'),'Espessura aproximada 4,76 mm',UUID()),
+('CS-002','Arame tubular para soldagem E71T-1 1,2 mm',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Rolo'),'Processo MIG/MAG com proteção gasosa',UUID()),
+('CS-003','Arame MIG inox ER308LSi 1,0 mm',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Rolo'),'Consumível para aço inoxidável',UUID()),
+('CS-006','Eletrodo revestido AWS E6013 3,25 mm',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Caixa'),'Uso geral em aço carbono',UUID()),
+('CS-007','Eletrodo revestido AWS E7018 2,50 mm',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Caixa'),'Baixo hidrogênio, aço carbono',UUID()),
+('CS-008','Eletrodo inox AWS E308L-16 2,50 mm',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Caixa'),'Soldagem de aço inoxidável',UUID()),
+('CS-009','Bocal cerâmico para tocha TIG nº 7',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Compatível com tocha TIG padrão',UUID()),
+('CS-010','Vareta TIG ER70S-2 2,4 mm',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Kg'),'Aço carbono, vareta para soldagem TIG',UUID()),
+('CS-011','Bico de corte para maçarico nº 2',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Para corte oxicombustível',UUID()),
+('CS-013','Difusor de gás para tocha MIG',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Peça de reposição para tocha MIG',UUID()),
+('CS-014','Lente protetora para máscara de solda',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Lente externa de reposição',UUID()),
+('CS-015','Spray antirrespingo sem silicone',(SELECT id FROM categorias WHERE codigo_prefixo='CS'),(SELECT id FROM unidades_medida WHERE nome='Lata'),'Proteção de bocal e peças durante soldagem',UUID()),
+('AB-002','Disco de corte inox 4.1/2 x 1,0 mm',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Abrasivo para aço inoxidável',UUID()),
+('AB-003','Disco de desbaste aço 4.1/2 x 6,4 mm',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Uso em esmerilhadeira angular',UUID()),
+('AB-005','Disco flap grão 80 - zircônio 4.1/2 pol.',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Acabamento fino em aço',UUID()),
+('AB-006','Escova circular de aço trançado 4 pol.',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Remoção de carepa e oxidação',UUID()),
+('AB-007','Lixa em folha grão 120',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Pacote'),'Folha para acabamento manual',UUID()),
+('AB-008','Broca HSS DIN 338 6,0 mm',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Aço rápido para metais',UUID()),
+('AB-009','Broca HSS DIN 338 10,0 mm',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Aço rápido para metais',UUID()),
+('AB-011','Macho manual M8 x 1,25 mm',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Jogo'),'Jogo para abertura de rosca métrica',UUID()),
+('AB-012','Lima chata bastarda 10 pol.',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Ferramenta para ajuste manual',UUID()),
+('AB-013','Serra copo bimetálica 32 mm',(SELECT id FROM categorias WHERE codigo_prefixo='AB'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Corte de chapas e tubos',UUID()),
+('FX-003','Parafuso sextavado classe 8.8 M8 x 30 mm',(SELECT id FROM categorias WHERE codigo_prefixo='FX'),(SELECT id FROM unidades_medida WHERE nome='Caixa'),'Acabamento zincado',UUID()),
+('FX-005','Parafuso Allen cabeça cilíndrica M8 x 30 mm',(SELECT id FROM categorias WHERE codigo_prefixo='FX'),(SELECT id FROM unidades_medida WHERE nome='Caixa'),'Aço classe 12.9',UUID()),
+('FX-006','Porca sextavada classe 8 M10',(SELECT id FROM categorias WHERE codigo_prefixo='FX'),(SELECT id FROM unidades_medida WHERE nome='Caixa'),'Rosca métrica, acabamento zincado',UUID()),
+('FX-007','Porca travante nylon M8',(SELECT id FROM categorias WHERE codigo_prefixo='FX'),(SELECT id FROM unidades_medida WHERE nome='Caixa'),'Inserto de poliamida',UUID()),
+('FX-009','Arruela lisa zincada DIN 125 M10',(SELECT id FROM categorias WHERE codigo_prefixo='FX'),(SELECT id FROM unidades_medida WHERE nome='Caixa'),'Aço zincado',UUID()),
+('FX-010','Arruela de pressão DIN 127 M8',(SELECT id FROM categorias WHERE codigo_prefixo='FX'),(SELECT id FROM unidades_medida WHERE nome='Caixa'),'Aço mola zincado',UUID()),
+('FX-011','Chumbador mecânico 3/8 x 3 pol.',(SELECT id FROM categorias WHERE codigo_prefixo='FX'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Fixação em concreto',UUID()),
+('QM-002','Óleo hidráulico ISO VG 46',(SELECT id FROM categorias WHERE codigo_prefixo='QM'),(SELECT id FROM unidades_medida WHERE nome='Galão'),'Lubrificante para sistemas hidráulicos',UUID()),
+('QM-005','Fluido de corte integral',(SELECT id FROM categorias WHERE codigo_prefixo='QM'),(SELECT id FROM unidades_medida WHERE nome='Galão'),'Aplicação em operações de usinagem',UUID()),
+('QM-006','Graxa de lítio EP2',(SELECT id FROM categorias WHERE codigo_prefixo='QM'),(SELECT id FROM unidades_medida WHERE nome='Kg'),'Lubrificação de rolamentos e mancais',UUID()),
+('QM-008','Desengripante aerosol 300 ml',(SELECT id FROM categorias WHERE codigo_prefixo='QM'),(SELECT id FROM unidades_medida WHERE nome='Lata'),'Soltura de componentes oxidados',UUID()),
+('QM-009','Desengraxante biodegradável concentrado',(SELECT id FROM categorias WHERE codigo_prefixo='QM'),(SELECT id FROM unidades_medida WHERE nome='Bombona'),'Limpeza pesada de peças',UUID()),
+('QM-010','Trava rosca média resistência',(SELECT id FROM categorias WHERE codigo_prefixo='QM'),(SELECT id FROM unidades_medida WHERE nome='Frasco'),'Fixação e vedação de roscas',UUID()),
+('EP-002','Máscara de solda passiva',(SELECT id FROM categorias WHERE codigo_prefixo='EP'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Visor articulado para soldagem',UUID()),
+('EP-003','Protetor facial incolor',(SELECT id FROM categorias WHERE codigo_prefixo='EP'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Proteção facial contra partículas',UUID()),
+('EP-005','Mangote de raspa para soldador',(SELECT id FROM categorias WHERE codigo_prefixo='EP'),(SELECT id FROM unidades_medida WHERE nome='Par'),'Proteção térmica de antebraço',UUID()),
+('EP-006','Luva de vaqueta para proteção mecânica',(SELECT id FROM categorias WHERE codigo_prefixo='EP'),(SELECT id FROM unidades_medida WHERE nome='Par'),'Uso em movimentação e manutenção',UUID()),
+('EP-007','Protetor auricular tipo plug',(SELECT id FROM categorias WHERE codigo_prefixo='EP'),(SELECT id FROM unidades_medida WHERE nome='Par'),'Proteção auditiva reutilizável',UUID()),
+('EP-009','Capacete de segurança classe B',(SELECT id FROM categorias WHERE codigo_prefixo='EP'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Com suspensão ajustável',UUID()),
+('EP-010','Respirador descartável PFF2 com válvula',(SELECT id FROM categorias WHERE codigo_prefixo='EP'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Proteção respiratória para particulados',UUID()),
+('UT-002','Pano industrial para limpeza',(SELECT id FROM categorias WHERE codigo_prefixo='UT'),(SELECT id FROM unidades_medida WHERE nome='Kg'),'Panos reutilizáveis para manutenção',UUID()),
+('UT-003','Fita isolante preta 19 mm',(SELECT id FROM categorias WHERE codigo_prefixo='UT'),(SELECT id FROM unidades_medida WHERE nome='Rolo'),'Fita isolante elétrica',UUID()),
+('UT-004','Fita adesiva crepe 24 mm',(SELECT id FROM categorias WHERE codigo_prefixo='UT'),(SELECT id FROM unidades_medida WHERE nome='Rolo'),'Uso geral em identificação e mascaramento',UUID()),
+('UT-006','Abraçadeira de nylon 200 mm',(SELECT id FROM categorias WHERE codigo_prefixo='UT'),(SELECT id FROM unidades_medida WHERE nome='Pacote'),'Pacote para organização de cabos',UUID()),
+('UT-007','Disco de lixa para politriz 5 pol. grão 80',(SELECT id FROM categorias WHERE codigo_prefixo='UT'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Lixamento de superfícies',UUID()),
+('UT-008','Chave combinada 13 mm',(SELECT id FROM categorias WHERE codigo_prefixo='UT'),(SELECT id FROM unidades_medida WHERE nome='Unidade'),'Aço cromo vanádio',UUID()),
+('UT-010','Jogo de chave Allen métrica',(SELECT id FROM categorias WHERE codigo_prefixo='UT'),(SELECT id FROM unidades_medida WHERE nome='Jogo'),'Medidas métricas variadas',UUID()),
+('UT-012','Mangueira pneumática PU 8 mm',(SELECT id FROM categorias WHERE codigo_prefixo='UT'),(SELECT id FROM unidades_medida WHERE nome='Metro'),'Mangueira flexível para ar comprimido',UUID());
+
 -- =====================================================================
 -- 19. ESTOQUE — um registro por material (níveis ilustrativos de
 -- exemplo; devem ser substituídos pela contagem real do almoxarifado)
@@ -218,18 +279,3 @@ SELECT m.id,
        (SELECT id FROM localizacoes ORDER BY id LIMIT 1)
 FROM materiais m;
 
--- =====================================================================
--- 20. DADOS DE EXEMPLO — REQUISIÇÃO DEMONSTRATIVA
--- (dados fictícios apenas para validar views, procedure e consultas)
--- =====================================================================
-INSERT INTO requisicoes (numero, setor_id, usuario_solicitante_id, status) VALUES
-('REQ-2026-000001', (SELECT id FROM setores WHERE codigo='SOLDA'),
-    (SELECT id FROM usuarios WHERE login='solic.solda'), 'PENDENTE');
-
-INSERT INTO requisicao_itens (requisicao_id, material_id, quantidade_solicitada) VALUES
-((SELECT id FROM requisicoes WHERE numero='REQ-2026-000001'),
-    (SELECT id FROM materiais WHERE codigo='CS-001'), 5),
-((SELECT id FROM requisicoes WHERE numero='REQ-2026-000001'),
-    (SELECT id FROM materiais WHERE codigo='EP-008'), 2);
-
--- =====================================================================
