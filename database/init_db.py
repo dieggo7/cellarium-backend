@@ -9,9 +9,12 @@ from database.session import engine
 from models.atendimento_almoxarifado import AtendimentoAlmoxarifado
 from models.categoria import Categoria
 from models.estoque import Estoque
+from models.estoque_setor import EstoqueSetor, MovimentacaoEstoqueSetor
 from models.localizacao import Localizacao
 from models.material import Material
+from models.mensagem_requisicao import MensagemRequisicao
 from models.movimentacao_estoque import MovimentacaoEstoque
+from models.notificacao import Notificacao
 from models.requisicao import Requisicao
 from models.requisicao_item import RequisicaoItem
 from models.setor import Setor
