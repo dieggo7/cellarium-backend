@@ -20,8 +20,8 @@ Logout é stateless: não existe blacklist nem refresh token persistido. Refresh
 
 | Método e caminho | Perfis | Body / filtros | Sucesso e erros principais |
 |---|---|---|---|
-| GET `/usuarios` | Autenticado | `page`, `limit`, `apenas_ativos` (padrão `true`) | 200 lista sem `senha_hash`; 400, 401 |
-| GET `/usuarios/{usuario_id}` | Autenticado | — | 200 usuário sem hash; 400, 401, 404 |
+| GET `/usuarios` | ADMIN | `page`, `limit`, `apenas_ativos` (padrão `true`) | 200 lista sem `senha_hash`; 400, 401, 403 |
+| GET `/usuarios/{usuario_id}` | ADMIN | — | 200 usuário sem hash; 400, 401, 403, 404 |
 | POST `/usuarios` | ADMIN | `nome`, `login`, `senha` (mín. 6), `perfil`, `setor_id?` | 201 usuário sem hash; 400, 401, 403, 404 setor inválido, 409 login duplicado |
 | PUT `/usuarios/{usuario_id}` | ADMIN | `nome?`, `login?`, `perfil?`, `setor_id?`, `ativo?`, `senha?` | 200 usuário sem hash; 400, 401, 403, 404, 409 login duplicado ou tentativa de auto-rebaixamento/desativação |
 | DELETE `/usuarios/{usuario_id}` | ADMIN | — | 200 usuário desativado logicamente; 401, 403, 404, 409 auto-desativação |
@@ -189,3 +189,18 @@ Inventário conferido pelos decorators em `routes/*.py` e pelos routers registra
 | POST `/orders` | ADMIN, GESTOR | `code`, `customer`, `total`, `status?` | 201; 400, 401, 403 |
 
 `/projects`, `/orders` e `/dashboard` são endpoints demonstrativos em memória, não integram o domínio de estoque. O framework também publica `/docs`, `/redoc`, `/openapi.json` e `/docs/oauth2-redirect`.
+
+## Estoque do setor, conversas e notificações
+
+| Método e caminho | Perfis | Body / filtros | Sucesso e erros principais |
+|---|---|---|---|
+| GET `/estoque-setor` | Todos os perfis operacionais | SOLICITANTE consulta seu setor; equipe informa `setor_id` | 200 materiais com saldo por setor; 400, 401, 403 |
+| GET `/estoque-setor/historico` | Todos os perfis operacionais | Mesmo escopo do saldo | 200 até 100 movimentações recentes |
+| POST `/estoque-setor/consumos` | SOLICITANTE | `material_id`, `quantidade`, `observacao?`; header `Idempotency-Key` | 201 saldo atualizado; 400, 401, 403, 409 saldo insuficiente ou repetição |
+| GET `/requisicoes/{id}/mensagens` | Todos os perfis operacionais | Solicitante só acessa as próprias requisições | 200 mensagens em ordem cronológica; 401, 403, 404 |
+| POST `/requisicoes/{id}/mensagens` | Todos os perfis operacionais | JSON `texto` (1–4000 caracteres) | 201 mensagem persistida e notificação para o outro lado; 400, 401, 403, 404 |
+| GET `/notificacoes` | Todos os perfis operacionais | Sem filtros; até 100 mais recentes | 200 notificações do usuário autenticado |
+| PATCH `/notificacoes/{id}/lida` | Todos os perfis operacionais | Sem body | 200; 401, 403, 404 |
+| PATCH `/notificacoes/lidas` | Todos os perfis operacionais | Sem body | 200 quantidade atualizada |
+
+A conclusão da requisição credita ao estoque do setor somente a quantidade atendida; consumo e devolução aceita registram débitos com histórico. A migration recompõe o saldo inicial a partir de requisições atendidas já existentes, descontando devoluções aceitas.

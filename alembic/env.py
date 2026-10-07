@@ -6,6 +6,9 @@ from alembic import context
 from config.settings import settings
 from database.base import Base
 from models.usuario import Usuario  # noqa: F401
+from models.estoque_setor import EstoqueSetor, MovimentacaoEstoqueSetor  # noqa: F401
+from models.mensagem_requisicao import MensagemRequisicao  # noqa: F401
+from models.notificacao import Notificacao  # noqa: F401
 
 config = context.config
 

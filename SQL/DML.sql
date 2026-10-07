@@ -1,4 +1,3 @@
-
 USE til_marcon_almoxarifado;
 
 -- =====================================================================
@@ -43,17 +42,11 @@ INSERT INTO localizacoes (codigo, descricao, corredor, estante, prateleira, posi
 
 -- =====================================================================
 -- 17. DADOS DE EXEMPLO — USUÁRIOS
--- Os valores de senha_hash abaixo são PLACEHOLDERS ilustrativos.
+-- Os valores de senha_hash dos demais usuários são PLACEHOLDERS ilustrativos.
 -- Em produção, a aplicação deve gerar hashes reais (bcrypt/argon2).
 -- =====================================================================
 INSERT INTO usuarios (nome, login, senha_hash, perfil, setor_id) VALUES
-('Administrador do Sistema', 'admin',        'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_1', 'ADMIN',       NULL),
-('Gestor do Almoxarifado',   'gestor.almox', 'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_2', 'GESTOR',      NULL),
-('Almoxarife Turno 1',       'almoxarife1',  'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_3', 'ALMOXARIFE',  NULL),
-('Almoxarife Turno 2',       'almoxarife2',  'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_4', 'ALMOXARIFE',  NULL),
-('Solicitante Produção',     'solic.prod',   'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_5', 'SOLICITANTE', (SELECT id FROM setores WHERE codigo='PROD')),
-('Solicitante Solda',        'solic.solda',  'HASH_BCRYPT_EXEMPLO_SUBSTITUIR_6', 'SOLICITANTE', (SELECT id FROM setores WHERE codigo='SOLDA'));
-
+('Administrador do Sistema', 'admin',        '$argon2id$v=19$m=65536,t=3,p=4$QJfugOAOIZcVWvbjJzYAiQ$K/EM1fsxsqabW1eZAxXgzJlMJV6kUsYjalCZ7nKSjfI', 'ADMIN',       NULL);
 -- =====================================================================
 -- 18. DADOS DOS MATERIAIS
 -- Código, descrição e prefixo de categoria preservados exatamente como

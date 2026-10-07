@@ -24,6 +24,8 @@ htmlcov/
 .env.*
 !.env.example
 
+
+
 # IDE / OS
 .vscode/
 .DS_Store
