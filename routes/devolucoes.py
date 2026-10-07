@@ -14,6 +14,7 @@ from core.estoque import buscar_estoque_para_update
 from core.security import exigir_perfil
 from database.session import get_db
 from models.devolucao import Devolucao, StatusDevolucaoEnum
+from models.estoque_setor import EstoqueSetor, MovimentacaoEstoqueSetor
 from models.material import Material
 from models.movimentacao_estoque import MovimentacaoEstoque, TipoMovimentacaoEnum
 from models.requisicao import Requisicao, StatusRequisicaoEnum
@@ -501,6 +502,17 @@ def aceitar_devolucao(
             posterior = anterior + devolucao.quantidade_calculada
             estoque.quantidade_atual = posterior
             estoque.data_ultima_movimentacao = func.now()
+            setor = db.scalar(select(Setor).where(Setor.id == requisicao.setor_id).with_for_update())
+            saldo_setor = db.scalar(select(EstoqueSetor).where(EstoqueSetor.setor_id == requisicao.setor_id, EstoqueSetor.material_id == item.material_id).with_for_update())
+            if setor is None or saldo_setor is None or saldo_setor.quantidade_atual < devolucao.quantidade_calculada:
+                raise HTTPException(status_code=409, detail="Saldo do setor insuficiente para reconciliar a devolução")
+            saldo_anterior_setor = saldo_setor.quantidade_atual
+            saldo_setor.quantidade_atual -= devolucao.quantidade_calculada
+            db.add(MovimentacaoEstoqueSetor(setor_id=requisicao.setor_id, material_id=item.material_id,
+                usuario_id=usuario_atual.id, requisicao_id=requisicao.id, tipo="DEVOLUCAO_AO_ALMOXARIFADO",
+                quantidade=devolucao.quantidade_calculada, saldo_anterior=saldo_anterior_setor,
+                saldo_posterior=saldo_setor.quantidade_atual, idempotency_key=f"devolucao:{devolucao.id}:setor",
+                observacao=f"Devolução {devolucao.id} aceita"))
             movimentacao = MovimentacaoEstoque(
                 material_id=item.material_id,
                 usuario_id=usuario_atual.id,

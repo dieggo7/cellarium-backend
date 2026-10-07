@@ -10,12 +10,14 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, aliased
 
 from core.estoque import buscar_estoque_para_update
+from core.notificacoes import notificar_almoxarifado, notificar_usuario
 from core.security import exigir_perfil
 from database.session import get_db
 from models.atendimento_almoxarifado import (
     AtendimentoAlmoxarifado,
     StatusAtendimentoEnum,
 )
+from models.estoque_setor import EstoqueSetor, MovimentacaoEstoqueSetor
 from models.material import Material
 from models.movimentacao_estoque import MovimentacaoEstoque, TipoMovimentacaoEnum
 from models.requisicao import Requisicao, StatusRequisicaoEnum
@@ -360,6 +362,7 @@ def criar_requisicao(
                             observacao=item.observacao,
                         )
                     )
+                notificar_almoxarifado(db, f"requisicao:{requisicao.id}:criada", "REQUISICAO", "Nova requisição", f"A requisição {requisicao.numero} aguarda atendimento.", requisicao.id)
                 db.flush()
             return _detalhe(db, requisicao.id)
         except HTTPException:
@@ -499,6 +502,7 @@ def cancelar_requisicao(
                     item.quantidade_atendida = Decimal(0)
                 item.status = StatusRequisicaoItemEnum.cancelado
             requisicao.status = StatusRequisicaoEnum.cancelada
+            notificar_usuario(db, requisicao.usuario_solicitante_id, f"requisicao:{requisicao.id}:cancelada", "STATUS", "Requisição cancelada", f"A requisição {requisicao.numero} foi cancelada.", requisicao.id)
             db.flush()
         return _detalhe(db, requisicao_id)
     except HTTPException:
@@ -565,6 +569,7 @@ def iniciar_separacao(
             requisicao.status = StatusRequisicaoEnum.em_separacao
             requisicao.usuario_separador_id = usuario_id
             requisicao.data_inicio_separacao = func.now()
+            notificar_usuario(db, requisicao.usuario_solicitante_id, f"requisicao:{requisicao.id}:separacao", "STATUS", "Requisição em separação", f"A requisição {requisicao.numero} está sendo separada.", requisicao.id)
             db.flush()
         return _detalhe(db, requisicao_id)
     except HTTPException:
@@ -653,8 +658,29 @@ def concluir_requisicao(
                 if item.status == StatusRequisicaoItemEnum.separado:
                     item.status = StatusRequisicaoItemEnum.atendido
                     item.quantidade_atendida = item.quantidade_separada
+            setor = db.scalar(select(Setor).where(Setor.id == requisicao.setor_id).with_for_update())
+            if setor is None:
+                raise HTTPException(status_code=409, detail="Setor da requisição não encontrado")
+            for item in itens:
+                quantidade = item.quantidade_atendida or Decimal(0)
+                if quantidade <= 0:
+                    continue
+                balance = db.scalar(select(EstoqueSetor).where(EstoqueSetor.setor_id == requisicao.setor_id, EstoqueSetor.material_id == item.material_id).with_for_update())
+                if balance is None:
+                    balance = EstoqueSetor(setor_id=requisicao.setor_id, material_id=item.material_id, quantidade_atual=Decimal(0))
+                    db.add(balance)
+                    db.flush()
+                before = balance.quantidade_atual
+                after = before + quantidade
+                balance.quantidade_atual = after
+                db.add(MovimentacaoEstoqueSetor(setor_id=requisicao.setor_id, material_id=item.material_id,
+                    usuario_id=usuario_atual.id, requisicao_id=requisicao.id, tipo="ENTRADA_REQUISICAO",
+                    quantidade=quantidade, saldo_anterior=before, saldo_posterior=after,
+                    idempotency_key=f"requisicao:{requisicao.id}:item:{item.id}:entrada",
+                    observacao=f"Atendimento da requisição {requisicao.numero}"))
             requisicao.status = StatusRequisicaoEnum.atendida
             requisicao.data_conclusao = func.now()
+            notificar_usuario(db, requisicao.usuario_solicitante_id, f"requisicao:{requisicao.id}:atendida", "STATUS", "Requisição atendida", f"A requisição {requisicao.numero} foi concluída.", requisicao.id)
             db.flush()
         return _detalhe(db, requisicao_id)
     except HTTPException:

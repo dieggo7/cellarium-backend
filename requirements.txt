@@ -1,4 +1,4 @@
-﻿fastapi[standard]==0.141.1
+fastapi[standard]==0.141.1
 uvicorn==0.53.0
 pydantic==2.13.5
 pydantic-settings==2.15.0
@@ -14,4 +14,3 @@ pytest-asyncio==1.4.0
 httpx==0.28.1
 ruff==0.16.8
 mypy==2.3.1
-
