@@ -1,7 +1,8 @@
-from typing import Literal
+import json
+from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -36,15 +37,19 @@ class Settings(BaseSettings):
         default="http://localhost:3000",
         description="URL base do frontend em desenvolvimento. Usada para alinhar o CORS com o app Next.js.",
     )
-    allowed_origins: list[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://localhost:8080",
-            "http://127.0.0.1:8080",
-        ],
+    allowed_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:3000"],
+        validation_alias="CORS_ORIGINS",
         description="Origens permitidas pelo CORS em desenvolvimento e homologação.",
     )
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            value = json.loads(value) if value.lstrip().startswith("[") else value.split(",")
+        return [origin.strip().rstrip("/") for origin in value if origin.strip().rstrip("/")]
+
     force_https_redirect: bool = Field(
         default=False,
         description="Redireciona requisições HTTP para HTTPS quando a aplicação estiver em produção.",
