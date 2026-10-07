@@ -3,6 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from config.settings import settings
+print("ALLOWED_HOSTS EM USO:", settings.allowed_hosts, flush=True)
 from database.init_db import init_db
 from middlewares.cors import add_cors_middleware
 from middlewares.ExceptionMiddleware import add_exception_middleware
