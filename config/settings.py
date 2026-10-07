@@ -29,12 +29,7 @@ class Settings(BaseSettings):
 
 
     allowed_hosts: list[str] = Field(
-        default_factory=lambda: [
-            "localhost",
-            "127.0.0.1",
-            "[::1]",
-            "tilmaroon.local",
-        ],
+        default_factory=lambda: ["localhost", "127.0.0.1"],
         description="Hosts permitidos pelo TrustedHostMiddleware.",
     )
     frontend_url: str = Field(
@@ -60,6 +55,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        env_parse_delimiter=",",
     )
 
 
