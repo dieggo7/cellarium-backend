@@ -226,3 +226,44 @@ INSERT INTO requisicao_itens (requisicao_id, material_id, quantidade_solicitada)
     (SELECT id FROM materiais WHERE codigo='EP-008'), 2);
 
 -- =====================================================================
+-- 21. MATERIAIS IDENTIFICADOS NAS ETIQUETAS DE RODAS E RODÍZIOS
+-- Códigos impressos preservados em codigo e qr_code. Estoque começa em
+-- zero até que a quantidade física seja conferida no almoxarifado.
+-- Este bloco pode ser executado novamente sem duplicar os cadastros.
+-- =====================================================================
+INSERT INTO categorias (nome, codigo_prefixo, descricao)
+VALUES ('Rodas, rodízios e componentes de movimentação', 'RD', 'Rodas, pneus, rodízios, garfos e guias de equipamentos')
+ON DUPLICATE KEY UPDATE ativo = VALUES(ativo);
+
+INSERT INTO materiais (codigo, descricao, categoria_id, unidade_medida_id, especificacao, qr_code)
+SELECT item.codigo, item.descricao, categoria.id, unidade.id, item.especificacao, item.codigo
+FROM (
+    SELECT '6687' AS codigo, 'Roda de borracha 10200 BIN 3/4 (10")' AS descricao, '10200 BIN; 3/4; 10 polegadas' AS especificacao
+    UNION ALL SELECT '4226', 'Roda em chapa 16 - 1210R1, roda RM 6', 'Chapa 16; referência 1210R1; roda RM 6'
+    UNION ALL SELECT '7078', 'Roda de borracha 200 x 65 x 19 mm (8")', '200 x 65 x 19 mm; 8 polegadas'
+    UNION ALL SELECT '9058', 'Roda de poliuretano amarelo Nº 01', 'Poliuretano amarelo; referência Nº 01'
+    UNION ALL SELECT '129', 'Rodízio GLE 414 NPN-MM (4" giratório)', 'GLE 414 NPN-MM; 4 polegadas; giratório'
+    UNION ALL SELECT '120', 'Rodízio FLE 312 NPP (3" fixa) - MM', 'FLE 312 NPP; 3 polegadas; fixo; MM'
+    UNION ALL SELECT '127', 'Rodízio GLE 312 NPP (3" giratório) - MM Marcon', 'GLE 312 NPP; 3 polegadas; giratório; MM Marcon'
+    UNION ALL SELECT '173', 'Garfo GMS 350B R - giratório', 'GMS 350B R; garfo giratório'
+    UNION ALL SELECT '7988', 'Garfo GGMX 62 para plataforma elevador', 'GGMX 62; plataforma elevador'
+    UNION ALL SELECT '17940', 'Guia de ferro fundido Nº 06', 'Ferro fundido; referência Nº 06'
+    UNION ALL SELECT '1794', 'Pneu maciço 8 polegadas', 'Pneu maciço; 8 polegadas'
+    UNION ALL SELECT '1796', 'Pneu maciço 10 polegadas', 'Pneu maciço; 10 polegadas'
+    UNION ALL SELECT '1795', 'Pneu maciço 9 polegadas', 'Pneu maciço; 9 polegadas'
+    UNION ALL SELECT '5746', 'Roda de borracha 9200 BIN 3/4 (9")', '9200 BIN; 3/4; 9 polegadas'
+) AS item
+JOIN categorias AS categoria ON categoria.codigo_prefixo = 'RD'
+JOIN unidades_medida AS unidade ON unidade.nome = 'Unidade'
+WHERE NOT EXISTS (
+    SELECT 1 FROM materiais AS existente
+    WHERE existente.codigo = item.codigo OR existente.qr_code = item.codigo
+)
+ON DUPLICATE KEY UPDATE codigo = VALUES(codigo);
+
+INSERT IGNORE INTO estoque (material_id, quantidade_atual, estoque_minimo, estoque_maximo)
+SELECT material.id, 0, 0, NULL
+FROM materiais AS material
+WHERE material.codigo IN ('6687', '4226', '7078', '9058', '129', '120', '127', '173', '7988', '17940', '1794', '1796', '1795', '5746');
+
+-- =====================================================================

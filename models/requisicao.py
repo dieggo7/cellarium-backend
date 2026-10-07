@@ -41,6 +41,7 @@ class Requisicao(Base):
         DateTime, nullable=True
     )
     data_conclusao: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    os_encerrada_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     observacao: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False

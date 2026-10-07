@@ -14,6 +14,7 @@ from database.base import Base
 from database.session import get_db
 from models.categoria import Categoria
 from models.estoque import Estoque
+from models.estoque_setor import EstoqueSetor, MovimentacaoEstoqueSetor
 from models.material import Material
 from models.movimentacao_estoque import MovimentacaoEstoque
 from models.requisicao import Requisicao, StatusRequisicaoEnum
@@ -769,6 +770,87 @@ def test_fluxo_requisicao_completo_e_numero_anual(inventory_api):
         item = db.get(RequisicaoItem, created.json()["itens"][0]["id"])
         assert item.status == StatusRequisicaoItemEnum.atendido
         assert item.quantidade_atendida == Decimal("3.000")
+
+
+def test_fechar_os_registra_sobra_e_permite_retirada_por_colega(inventory_api):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    preparar_requisicao_atendida(factory, ids)
+    with factory.begin() as db:
+        colega = Usuario(
+            nome="Outro funcionário",
+            login=f"colega-{uuid4().hex[:8]}",
+            senha_hash="x",
+            perfil=PerfilEnum.solicitante,
+            setor_id=ids["setor_id"],
+            ativo=True,
+        )
+        db.add(colega)
+        db.add(
+            EstoqueSetor(
+                setor_id=ids["setor_id"],
+                material_id=ids["material_id"],
+                quantidade_atual=Decimal(5),
+            )
+        )
+        db.flush()
+        ids["colega_id"] = colega.id
+
+    payload = {"itens": [{"item_id": ids["item_id"], "quantidade_sobrante": "2"}]}
+    current_user["value"] = SimpleNamespace(
+        id=ids["colega_id"], perfil=PerfilEnum.solicitante, setor_id=ids["setor_id"]
+    )
+    unauthorized = client.patch(
+        f"/requisicoes/{ids['requisicao_id']}/encerrar-os", json=payload
+    )
+    assert unauthorized.status_code == 403
+    blocked_withdrawal = client.post(
+        "/estoque-setor/consumos",
+        json={"material_id": ids["material_id"], "quantidade": "1"},
+        headers={"Idempotency-Key": "colleague-sector-withdrawal"},
+    )
+    assert blocked_withdrawal.status_code == 409
+
+    current_user["value"] = SimpleNamespace(
+        id=ids["solicitante_id"], perfil=PerfilEnum.solicitante, setor_id=ids["setor_id"]
+    )
+    excessive = client.patch(
+        f"/requisicoes/{ids['requisicao_id']}/encerrar-os",
+        json={"itens": [{"item_id": ids["item_id"], "quantidade_sobrante": "6"}]},
+    )
+    assert excessive.status_code == 422
+
+    closed = client.patch(
+        f"/requisicoes/{ids['requisicao_id']}/encerrar-os", json=payload
+    )
+    duplicate = client.patch(
+        f"/requisicoes/{ids['requisicao_id']}/encerrar-os", json=payload
+    )
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["os_encerrada_at"] is not None
+    assert Decimal(str(closed.json()["itens"][0]["quantidade_sobrante"])) == Decimal(2)
+    assert duplicate.status_code == 409
+
+    current_user["value"] = SimpleNamespace(
+        id=ids["colega_id"], perfil=PerfilEnum.solicitante, setor_id=ids["setor_id"]
+    )
+    withdrawal = client.post(
+        "/estoque-setor/consumos",
+        json={"material_id": ids["material_id"], "quantidade": "1"},
+        headers={"Idempotency-Key": "colleague-sector-withdrawal"},
+    )
+    assert withdrawal.status_code == 201, withdrawal.text
+    assert Decimal(str(withdrawal.json()["quantidade_atual"])) == Decimal(1)
+
+    with factory() as db:
+        balance = db.query(EstoqueSetor).filter_by(
+            setor_id=ids["setor_id"], material_id=ids["material_id"]
+        ).one()
+        movements = db.query(MovimentacaoEstoqueSetor).filter_by(
+            setor_id=ids["setor_id"], material_id=ids["material_id"]
+        ).all()
+        assert balance.quantidade_atual == Decimal("1.000")
+        assert {movement.tipo for movement in movements} == {"CONSUMO_OS", "CONSUMO"}
 
 
 def test_cancelamento_com_devolucao_e_idempotencia(inventory_api):

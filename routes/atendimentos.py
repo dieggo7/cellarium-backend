@@ -106,6 +106,57 @@ def iniciar_atendimento(
         raise
 
 
+@router.post("/trocar")
+def trocar_atendimento(
+    payload: AtendimentoCreateRequest,
+    db: Session = Depends(get_db),
+    usuario_atual: Usuario = Depends(
+        exigir_perfil(PerfilEnum.almoxarife, PerfilEnum.admin)
+    ),
+):
+    usuario_id = usuario_atual.id
+    db.rollback()
+    try:
+        with db.begin():
+            db.scalar(select(Usuario).where(Usuario.id == usuario_id).with_for_update())
+            setor = db.get(Setor, payload.setor_id)
+            if setor is None or not setor.ativo:
+                raise HTTPException(
+                    status_code=404, detail="Setor não encontrado ou inativo"
+                )
+            aberto = db.scalar(
+                select(AtendimentoAlmoxarifado)
+                .where(
+                    AtendimentoAlmoxarifado.usuario_id == usuario_id,
+                    AtendimentoAlmoxarifado.status == StatusAtendimentoEnum.aberto,
+                )
+                .order_by(AtendimentoAlmoxarifado.data_inicio.desc())
+                .with_for_update()
+            )
+            if aberto is None:
+                raise HTTPException(
+                    status_code=409, detail="Não há atendimento aberto para trocar"
+                )
+            if aberto.setor_id == setor.id:
+                return _atendimento_dict(aberto, setor.nome)
+
+            aberto.status = StatusAtendimentoEnum.encerrado
+            aberto.data_fim = func.now()
+            atendimento = AtendimentoAlmoxarifado(
+                usuario_id=usuario_id,
+                setor_id=setor.id,
+                status=StatusAtendimentoEnum.aberto,
+                data_inicio=func.now(),
+            )
+            db.add(atendimento)
+            db.flush()
+            db.refresh(atendimento)
+            return _atendimento_dict(atendimento, setor.nome)
+    except HTTPException:
+        db.rollback()
+        raise
+
+
 @router.get("/ativo")
 def atendimento_ativo(
     db: Session = Depends(get_db),

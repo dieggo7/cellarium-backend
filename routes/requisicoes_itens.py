@@ -259,6 +259,7 @@ def obter_itens_requisicao(db: Session, requisicao_id: int) -> list[dict]:
             "quantidade_solicitada": row[0].quantidade_solicitada,
             "quantidade_separada": row[0].quantidade_separada,
             "quantidade_atendida": row[0].quantidade_atendida,
+            "quantidade_sobrante": row[0].quantidade_sobrante,
             "quantidade_pendente": row[0].quantidade_solicitada
             - row[0].quantidade_separada,
             "status": row[0].status,

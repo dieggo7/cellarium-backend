@@ -32,6 +32,9 @@ class RequisicaoItem(Base):
     quantidade_atendida: Mapped[Decimal] = mapped_column(
         Numeric(12, 3), default=0, nullable=False
     )
+    quantidade_sobrante: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 3), nullable=True
+    )
     status: Mapped[StatusRequisicaoItemEnum] = mapped_column(
         Enum(StatusRequisicaoItemEnum, values_callable=lambda e: [x.value for x in e]),
         default=StatusRequisicaoItemEnum.pendente,

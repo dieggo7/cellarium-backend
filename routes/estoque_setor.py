@@ -12,6 +12,8 @@ from core.security import exigir_perfil
 from database.session import get_db
 from models.estoque_setor import EstoqueSetor, MovimentacaoEstoqueSetor
 from models.material import Material
+from models.requisicao import Requisicao, StatusRequisicaoEnum
+from models.requisicao_item import RequisicaoItem
 from models.setor import Setor
 from models.unidade_medida import UnidadeMedida
 from models.usuario import PerfilEnum, Usuario
@@ -92,6 +94,23 @@ def consumir_estoque_setor(
             material = db.get(Material, payload.material_id)
             if setor is None or material is None or not material.ativo:
                 raise HTTPException(status_code=404, detail="Setor ou material não encontrado")
+            os_aberta = db.scalar(
+                select(Requisicao.id)
+                .join(RequisicaoItem, RequisicaoItem.requisicao_id == Requisicao.id)
+                .where(
+                    Requisicao.setor_id == setor_id,
+                    Requisicao.status == StatusRequisicaoEnum.atendida,
+                    Requisicao.os_encerrada_at.is_(None),
+                    RequisicaoItem.material_id == payload.material_id,
+                    RequisicaoItem.quantidade_atendida > 0,
+                )
+                .limit(1)
+            )
+            if os_aberta is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Feche a OS que utiliza este material antes de liberar uma retirada do saldo compartilhado",
+                )
             if db.scalar(select(MovimentacaoEstoqueSetor.id).where(MovimentacaoEstoqueSetor.idempotency_key == key)):
                 raise HTTPException(status_code=409, detail="Este consumo já foi registrado")
             balance = db.scalar(select(EstoqueSetor).where(EstoqueSetor.setor_id == setor_id, EstoqueSetor.material_id == payload.material_id).with_for_update())

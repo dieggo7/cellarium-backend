@@ -53,6 +53,15 @@ class ConcluirRequest(BaseModel):
     permitir_parcial: bool = False
 
 
+class SobraItemRequest(BaseModel):
+    item_id: int = Field(gt=0)
+    quantidade_sobrante: Decimal = Field(ge=0, max_digits=12, decimal_places=3)
+
+
+class EncerrarOSRequest(BaseModel):
+    itens: list[SobraItemRequest] = Field(default_factory=list, max_length=100)
+
+
 def _conditions(
     usuario, status_filtro, setor_id, usuario_solicitante_id, numero, data_de, data_ate
 ):
@@ -92,6 +101,7 @@ def _header_dict(row) -> dict:
         "data_solicitacao": requisicao.data_solicitacao,
         "data_inicio_separacao": requisicao.data_inicio_separacao,
         "data_conclusao": requisicao.data_conclusao,
+        "os_encerrada_at": requisicao.os_encerrada_at,
         "observacao": requisicao.observacao,
     }
 
@@ -419,6 +429,130 @@ def atualizar_requisicao(
     except HTTPException:
         db.rollback()
         raise
+
+
+@router.patch("/{requisicao_id}/encerrar-os")
+def encerrar_os(
+    requisicao_id: int,
+    payload: EncerrarOSRequest,
+    db: Session = Depends(get_db),
+    usuario_atual: Usuario = Depends(exigir_perfil(PerfilEnum.solicitante)),
+):
+    usuario_id = usuario_atual.id
+    db.rollback()
+    try:
+        with db.begin():
+            requisicao = db.scalar(
+                select(Requisicao)
+                .where(Requisicao.id == requisicao_id)
+                .with_for_update()
+            )
+            if requisicao is None:
+                raise HTTPException(status_code=404, detail="OS não encontrada")
+            if requisicao.usuario_solicitante_id != usuario_id:
+                raise HTTPException(
+                    status_code=403, detail="Você só pode fechar OS da sua conta"
+                )
+            if usuario_atual.setor_id != requisicao.setor_id:
+                raise HTTPException(
+                    status_code=403, detail="A OS pertence a outro setor"
+                )
+            if requisicao.status != StatusRequisicaoEnum.atendida:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A OS só pode ser fechada após a entrega dos materiais",
+                )
+            if requisicao.os_encerrada_at is not None:
+                raise HTTPException(status_code=409, detail="Esta OS já foi fechada")
+
+            itens = db.scalars(
+                select(RequisicaoItem)
+                .where(RequisicaoItem.requisicao_id == requisicao_id)
+                .order_by(RequisicaoItem.material_id)
+                .with_for_update()
+            ).all()
+            itens_entregues = {
+                item.id: item for item in itens if item.quantidade_atendida > 0
+            }
+            sobras = {item.item_id: item.quantidade_sobrante for item in payload.itens}
+            if len(sobras) != len(payload.itens) or set(sobras) != set(itens_entregues):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Informe uma quantidade sobrante para cada material entregue",
+                )
+
+            setor = db.scalar(
+                select(Setor)
+                .where(Setor.id == requisicao.setor_id)
+                .with_for_update()
+            )
+            if setor is None:
+                raise HTTPException(status_code=409, detail="Setor da OS não encontrado")
+            material_ids = sorted({item.material_id for item in itens_entregues.values()})
+            balances = db.scalars(
+                select(EstoqueSetor)
+                .where(
+                    EstoqueSetor.setor_id == requisicao.setor_id,
+                    EstoqueSetor.material_id.in_(material_ids),
+                )
+                .order_by(EstoqueSetor.material_id)
+                .with_for_update()
+            ).all() if material_ids else []
+            balances_by_material = {balance.material_id: balance for balance in balances}
+
+            ajustes = []
+            for item_id, item in itens_entregues.items():
+                sobra = sobras[item_id]
+                if sobra > item.quantidade_atendida:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"A sobra do item {item_id} excede a quantidade entregue",
+                    )
+                balance = balances_by_material.get(item.material_id)
+                if balance is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Saldo setorial do material {item.material_id} não encontrado",
+                    )
+                consumida = item.quantidade_atendida - sobra
+                if balance.quantidade_atual < consumida:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Saldo insuficiente para reconciliar o fechamento do material {item.material_id}",
+                    )
+                ajustes.append((item, balance, sobra, consumida))
+
+            for item, balance, sobra, consumida in ajustes:
+                item.quantidade_sobrante = sobra
+                if consumida <= 0:
+                    continue
+                anterior = balance.quantidade_atual
+                posterior = anterior - consumida
+                balance.quantidade_atual = posterior
+                db.add(
+                    MovimentacaoEstoqueSetor(
+                        setor_id=requisicao.setor_id,
+                        material_id=item.material_id,
+                        usuario_id=usuario_id,
+                        requisicao_id=requisicao.id,
+                        tipo="CONSUMO_OS",
+                        quantidade=consumida,
+                        saldo_anterior=anterior,
+                        saldo_posterior=posterior,
+                        idempotency_key=f"os:{requisicao.id}:item:{item.id}:consumo",
+                        observacao=f"Consumo no fechamento da OS {requisicao.numero}; sobra: {sobra}",
+                    )
+                )
+
+            requisicao.os_encerrada_at = func.now()
+            db.flush()
+        return _detalhe(db, requisicao_id)
+    except HTTPException:
+        db.rollback()
+        raise
+    except (IntegrityError, OperationalError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Conflito ao fechar OS") from exc
 
 
 @router.patch("/{requisicao_id}/cancelar")
