@@ -17,6 +17,7 @@ from models.estoque import Estoque
 from models.estoque_setor import EstoqueSetor, MovimentacaoEstoqueSetor
 from models.material import Material
 from models.movimentacao_estoque import MovimentacaoEstoque
+from models.notificacao import Notificacao
 from models.requisicao import Requisicao, StatusRequisicaoEnum
 from models.requisicao_item import RequisicaoItem, StatusRequisicaoItemEnum
 from models.setor import Setor
@@ -851,6 +852,61 @@ def test_fechar_os_registra_sobra_e_permite_retirada_por_colega(inventory_api):
         ).all()
         assert balance.quantidade_atual == Decimal("1.000")
         assert {movement.tipo for movement in movements} == {"CONSUMO_OS", "CONSUMO"}
+
+
+def test_funcionario_apaga_apenas_as_proprias_notificacoes(inventory_api):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    with factory.begin() as db:
+        colleague = Usuario(
+            nome="Colega",
+            login=f"notificacao-colega-{uuid4().hex[:8]}",
+            senha_hash="x",
+            perfil=PerfilEnum.solicitante,
+            setor_id=ids["setor_id"],
+            ativo=True,
+        )
+        db.add(colleague)
+        db.flush()
+        own_one = Notificacao(
+            usuario_id=ids["solicitante_id"],
+            event_key="delete-own-1",
+            tipo="STATUS",
+            titulo="Primeira",
+            mensagem="Notificação própria",
+        )
+        own_two = Notificacao(
+            usuario_id=ids["solicitante_id"],
+            event_key="delete-own-2",
+            tipo="STATUS",
+            titulo="Segunda",
+            mensagem="Outra notificação própria",
+        )
+        colleague_notice = Notificacao(
+            usuario_id=colleague.id,
+            event_key="delete-colleague-1",
+            tipo="STATUS",
+            titulo="Colega",
+            mensagem="Notificação do colega",
+        )
+        db.add_all([own_one, own_two, colleague_notice])
+        db.flush()
+        ids.update({"own_notice": own_one.id, "colleague_notice": colleague_notice.id, "colleague_id": colleague.id})
+
+    current_user["value"] = SimpleNamespace(
+        id=ids["solicitante_id"], perfil=PerfilEnum.solicitante
+    )
+    deleted = client.delete(f"/notificacoes/{ids['own_notice']}")
+    forbidden = client.delete(f"/notificacoes/{ids['colleague_notice']}")
+    cleared = client.delete("/notificacoes")
+
+    assert deleted.status_code == 200, deleted.text
+    assert forbidden.status_code == 404
+    assert cleared.status_code == 200
+    assert cleared.json()["apagadas"] == 1
+    assert client.get("/notificacoes").json() == []
+    with factory() as db:
+        assert db.get(Notificacao, ids["colleague_notice"]) is not None
 
 
 def test_cancelamento_com_devolucao_e_idempotencia(inventory_api):

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from core.notificacoes import nome_requisicao, notificar_almoxarifado, notificar_usuario
@@ -83,3 +83,34 @@ def marcar_todas_lidas(db: Session = Depends(get_db), usuario: Usuario = Depends
     result = db.execute(update(Notificacao).where(Notificacao.usuario_id == usuario.id, Notificacao.lida.is_(False)).values(lida=True))
     db.commit()
     return {"atualizadas": result.rowcount or 0}
+
+
+@router.delete("/notificacoes/{notificacao_id}")
+def apagar_notificacao(
+    notificacao_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_perfil(*ROLES)),
+):
+    row = db.scalar(
+        select(Notificacao)
+        .where(
+            Notificacao.id == notificacao_id,
+            Notificacao.usuario_id == usuario.id,
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Notificação não encontrada")
+    db.delete(row)
+    db.commit()
+    return {"id": notificacao_id, "apagada": True}
+
+
+@router.delete("/notificacoes")
+def apagar_todas_notificacoes(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_perfil(*ROLES)),
+):
+    result = db.execute(delete(Notificacao).where(Notificacao.usuario_id == usuario.id))
+    db.commit()
+    return {"apagadas": result.rowcount or 0}
