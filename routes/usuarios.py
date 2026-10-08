@@ -4,7 +4,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.security import exigir_perfil
@@ -235,13 +234,10 @@ def delete_usuario(
         raise HTTPException(
             status_code=409, detail="Um ADMIN não pode excluir a própria conta"
         )
-    db.delete(usuario)
-    try:
+    # Preserve foreign-key history and make DELETE safe to repeat. This route
+    # represents logical deactivation, as documented for the user API.
+    if usuario.ativo:
+        usuario.ativo = False
         db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Não é possível excluir esta conta porque há registros vinculados. Desative o acesso para preservar o histórico.",
-        ) from exc
-    return {"message": "Usuário excluído permanentemente"}
+        db.refresh(usuario)
+    return {"message": "Acesso do usuário desativado; histórico preservado"}

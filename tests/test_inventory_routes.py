@@ -1015,6 +1015,26 @@ def test_usuario_criado_e_atualizado_com_hash_sem_exposicao(inventory_api):
     assert self_disable.status_code == 409
 
 
+def test_excluir_usuario_com_historico_desativa_de_forma_idempotente(inventory_api):
+    client, factory, current_user = inventory_api
+    ids = seed_inventory(factory)
+    current_user["value"] = SimpleNamespace(id=ids["admin_id"], perfil=PerfilEnum.admin)
+
+    first_delete = client.delete(f"/usuarios/{ids['solicitante_id']}")
+    repeated_delete = client.delete(f"/usuarios/{ids['solicitante_id']}")
+
+    assert first_delete.status_code == 200, first_delete.text
+    assert repeated_delete.status_code == 200, repeated_delete.text
+    assert "desativado" in first_delete.json()["message"]
+    with factory() as db:
+        user = db.get(Usuario, ids["solicitante_id"])
+        assert user is not None
+        assert user.ativo is False
+        assert db.query(Requisicao).filter_by(
+            usuario_solicitante_id=ids["solicitante_id"]
+        ).count() == 1
+
+
 def test_filtros_catalogo_e_soft_delete_com_vinculo(inventory_api):
     client, factory, current_user = inventory_api
     ids = seed_inventory(factory)
