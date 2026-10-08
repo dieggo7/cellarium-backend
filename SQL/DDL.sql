@@ -14,7 +14,7 @@ CREATE TABLE categorias (
     descricao       VARCHAR(255) NULL,
     ativo           TINYINT(1)   NOT NULL DEFAULT 1,
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT uq_categorias_prefixo UNIQUE (codigo_prefixo),
     CONSTRAINT uq_categorias_nome    UNIQUE (nome)
 ) ENGINE=InnoDB;
@@ -28,7 +28,7 @@ CREATE TABLE unidades_medida (
     sigla       VARCHAR(10) NULL,
     ativo       TINYINT(1)  NOT NULL DEFAULT 1,
     created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at  DATETIME    NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT uq_unidades_nome UNIQUE (nome)
 ) ENGINE=InnoDB;
 
@@ -45,7 +45,7 @@ CREATE TABLE localizacoes (
     posicao     VARCHAR(20)  NULL,
     ativo       TINYINT(1)   NOT NULL DEFAULT 1,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at  DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT uq_localizacoes_codigo UNIQUE (codigo)
 ) ENGINE=InnoDB;
 
@@ -58,7 +58,7 @@ CREATE TABLE setores (
     codigo      VARCHAR(20)  NOT NULL,
     ativo       TINYINT(1)   NOT NULL DEFAULT 1,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at  DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT uq_setores_codigo UNIQUE (codigo),
     CONSTRAINT uq_setores_nome   UNIQUE (nome)
 ) ENGINE=InnoDB;
@@ -75,10 +75,26 @@ CREATE TABLE usuarios (
     setor_id     INT UNSIGNED NULL,
     ativo        TINYINT(1)   NOT NULL DEFAULT 1,
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at   DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT uq_usuarios_login UNIQUE (login),
     CONSTRAINT fk_usuarios_setor FOREIGN KEY (setor_id) REFERENCES setores(id)
         ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Compatibility table from the initial Alembic revision. The current API uses
+-- usuarios; this legacy table is kept here so SQL and migration-created schema agree.
+CREATE TABLE users (
+    id            INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    name          VARCHAR(120) NOT NULL,
+    email         VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role          VARCHAR(30) NOT NULL DEFAULT 'user',
+    is_active     TINYINT(1) NOT NULL DEFAULT 1,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME NULL,
+    CONSTRAINT uq_users_email UNIQUE (email),
+    INDEX ix_users_id (id),
+    INDEX ix_users_email (email)
 ) ENGINE=InnoDB;
 
 -- =====================================================================
@@ -95,7 +111,7 @@ CREATE TABLE materiais (
     peso_unitario_g     DECIMAL(12,6) NULL COMMENT 'Peso unitário em gramas para cálculo de devoluções.',
     ativo               TINYINT(1)   NOT NULL DEFAULT 1,
     created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at          DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT uq_materiais_codigo  UNIQUE (codigo),
     CONSTRAINT uq_materiais_qrcode  UNIQUE (qr_code),
     CONSTRAINT fk_materiais_categoria FOREIGN KEY (categoria_id) REFERENCES categorias(id)
@@ -143,6 +159,7 @@ CREATE TABLE requisicoes (
     data_solicitacao         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     data_inicio_separacao    DATETIME NULL,
     data_conclusao           DATETIME NULL,
+    os_encerrada_at          DATETIME NULL,
     observacao               VARCHAR(500) NULL,
     created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -165,6 +182,7 @@ CREATE TABLE requisicao_itens (
     quantidade_solicitada    DECIMAL(12,3) NOT NULL,
     quantidade_separada      DECIMAL(12,3) NOT NULL DEFAULT 0,
     quantidade_atendida      DECIMAL(12,3) NOT NULL DEFAULT 0,
+    quantidade_sobrante      DECIMAL(12,3) NULL,
     status                   ENUM('PENDENTE','SEPARADO','ATENDIDO','CANCELADO')
                                 NOT NULL DEFAULT 'PENDENTE',
     observacao               VARCHAR(500) NULL,
@@ -252,6 +270,65 @@ CREATE TABLE atendimentos_almoxarifado (
         ON UPDATE CASCADE ON DELETE RESTRICT,
     CONSTRAINT fk_atend_setor FOREIGN KEY (setor_id) REFERENCES setores(id)
         ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+-- Tables introduced by the 20261006_live_requester_tabs Alembic revision.
+CREATE TABLE estoque_setor (
+    id               INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    setor_id         INT UNSIGNED NOT NULL,
+    material_id      INT UNSIGNED NOT NULL,
+    quantidade_atual DECIMAL(12,3) NOT NULL DEFAULT 0,
+    updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT uq_estoque_setor_material UNIQUE (setor_id, material_id),
+    CONSTRAINT fk_estoque_setor_setor FOREIGN KEY (setor_id) REFERENCES setores(id),
+    CONSTRAINT fk_estoque_setor_material FOREIGN KEY (material_id) REFERENCES materiais(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE movimentacoes_estoque_setor (
+    id               INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    setor_id         INT UNSIGNED NOT NULL,
+    material_id      INT UNSIGNED NOT NULL,
+    usuario_id       INT UNSIGNED NULL,
+    requisicao_id    INT UNSIGNED NULL,
+    tipo             VARCHAR(30) NOT NULL,
+    quantidade       DECIMAL(12,3) NOT NULL,
+    saldo_anterior   DECIMAL(12,3) NOT NULL,
+    saldo_posterior  DECIMAL(12,3) NOT NULL,
+    idempotency_key  VARCHAR(160) NOT NULL,
+    observacao       VARCHAR(500) NULL,
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_movimentacoes_estoque_setor_idempotency UNIQUE (idempotency_key),
+    CONSTRAINT fk_mov_setor_setor FOREIGN KEY (setor_id) REFERENCES setores(id),
+    CONSTRAINT fk_mov_setor_material FOREIGN KEY (material_id) REFERENCES materiais(id),
+    CONSTRAINT fk_mov_setor_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+    CONSTRAINT fk_mov_setor_requisicao FOREIGN KEY (requisicao_id) REFERENCES requisicoes(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE mensagens_requisicao (
+    id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    requisicao_id INT UNSIGNED NOT NULL,
+    usuario_id    INT UNSIGNED NOT NULL,
+    texto         TEXT NOT NULL,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_mensagens_requisicao FOREIGN KEY (requisicao_id) REFERENCES requisicoes(id),
+    CONSTRAINT fk_mensagens_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+    INDEX ix_mensagens_requisicao_requisicao_id (requisicao_id),
+    INDEX ix_mensagens_requisicao_created_at (created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE notificacoes (
+    id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    usuario_id    INT UNSIGNED NOT NULL,
+    requisicao_id INT UNSIGNED NULL,
+    event_key     VARCHAR(160) NOT NULL,
+    tipo          VARCHAR(40) NOT NULL,
+    titulo        VARCHAR(150) NOT NULL,
+    mensagem      TEXT NOT NULL,
+    lida          TINYINT(1) NOT NULL DEFAULT 0,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_notificacao_usuario_evento UNIQUE (usuario_id, event_key),
+    CONSTRAINT fk_notificacoes_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+    CONSTRAINT fk_notificacoes_requisicao FOREIGN KEY (requisicao_id) REFERENCES requisicoes(id)
 ) ENGINE=InnoDB;
 
 -- =====================================================================

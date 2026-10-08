@@ -1,0 +1,8 @@
+# Deploy do schema do banco
+
+1. Crie uma migration Alembic para cada mudança estrutural e confira a cadeia com `alembic heads` (deve haver uma única head).
+2. Adicione o SQL equivalente em `SQL/`, com verificações idempotentes quando possível, e mantenha `SQL/DDL.sql` alinhado para instalações novas.
+3. Antes de aplicar em produção, faça backup e confira a revisão/schema atuais. Este histórico Alembic não inicializa sozinho o schema-base: a primeira revision cria somente a tabela legada `users`; as revisões seguintes pressupõem as tabelas centrais existentes. Como `SQL/DDL.sql` também cria `users`, não rode o histórico inteiro sem revisar a revisão-base: a primeira migration não é idempotente e falha se essa tabela já existir.
+4. Aplique migrations com `alembic upgrade head` usando a `DATABASE_URL` do Railway que aponta para a URL **pública** do MySQL. Não use `mysql.railway.internal` fora da rede privada do Railway e nunca registre ou compartilhe a URL com credenciais.
+5. Para banco existente sem histórico Alembic, não rode `stamp` às cegas. Valide primeiro se os efeitos estruturais e os dados de todas as revisions anteriores estão presentes; só então marque a revisão-base correspondente e aplique as revisions pendentes. Preserve migrations com backfill de dados: não marque uma revisão como aplicada antes de confirmar esse backfill.
+6. Após a aplicação, confirme a revisão atual e compare as colunas/tabelas com os models e os scripts SQL. Mantenha um passo de `alembic upgrade head` no start do Railway somente depois de estabelecer e validar essa revisão-base no banco existente.
