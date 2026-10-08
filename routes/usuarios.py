@@ -233,8 +233,15 @@ def delete_usuario(
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     if usuario.id == usuario_atual.id:
         raise HTTPException(
-            status_code=409, detail="Um ADMIN não pode desativar a própria conta"
+            status_code=409, detail="Um ADMIN não pode excluir a própria conta"
         )
-    usuario.ativo = False
-    db.commit()
-    return {"message": "Usuário desativado com sucesso"}
+    db.delete(usuario)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Não é possível excluir esta conta porque há registros vinculados. Desative o acesso para preservar o histórico.",
+        ) from exc
+    return {"message": "Usuário excluído permanentemente"}
