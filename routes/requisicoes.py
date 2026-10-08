@@ -1,5 +1,6 @@
 # ruff: noqa: B008
 
+import logging
 from datetime import date, datetime, time
 from decimal import Decimal
 
@@ -25,6 +26,8 @@ from models.requisicao_item import RequisicaoItem, StatusRequisicaoItemEnum
 from models.setor import Setor
 from models.usuario import PerfilEnum, Usuario
 from routes.requisicoes_itens import obter_itens_requisicao
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/requisicoes", tags=["requisições"])
 
@@ -379,6 +382,13 @@ def criar_requisicao(
             db.rollback()
             raise
         except (IntegrityError, OperationalError) as exc:
+            logger.error(
+                "Failed to create request (attempt %s/3): exc=%r orig=%r",
+                tentativa + 1,
+                exc,
+                exc.orig,
+                exc_info=True,
+            )
             db.rollback()
             if tentativa == 2:
                 raise HTTPException(
